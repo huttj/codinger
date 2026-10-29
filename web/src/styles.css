@@ -696,7 +696,8 @@ button.done-mark:hover { background: color-mix(in srgb, var(--ok) 12%, transpare
 .ack-btn:hover { border-color: var(--line); }
 .ack-btn.on { background: var(--accent-soft); }
 /* The row's first emoji sits right above the button you pressed; the remove button hangs off to its left. */
-.ack-pop { position: absolute; bottom: calc(100% + 4px); left: -6px; touch-action: none; }
+/* It is in the page's body, over the session's header; AssistantMessage.tsx (LeftRail) places it. Its scroll-margin-top tells it where the screen's top is clear. */
+.ack-pop { position: fixed; z-index: 20; touch-action: none; scroll-margin-top: env(safe-area-inset-top, 0px); }
 .ack-row { position: relative; display: flex; align-items: center; display: flex; gap: 2px; padding: 3px; background: var(--card); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 4px 16px rgba(0, 0, 0, .15); white-space: nowrap; }
 .ack-row button { position: relative; border: none; background: none; font-size: calc(24px * var(--fs, 1)); line-height: 1; padding: 4px; border-radius: 50%; transition: transform .08s; }
 /* Each emoji takes a finger a little above and below the row too (a drag up that ends off it); less below, so the button you pressed stays clear. */

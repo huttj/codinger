@@ -7,7 +7,7 @@
 // has arrived.
 
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { flushSync } from 'react-dom'
+import { createPortal, flushSync } from 'react-dom'
 import type { Token, Tokens } from 'marked'
 import DOMPurify from 'dompurify'
 import { parseAskBody, type Ask } from '../../../shared/asks.ts'
@@ -325,7 +325,7 @@ function LeftRail({ sid, root, reacts, drafted }: { sid: string; root: React.Ref
 
   useEffect(() => {
     if (!row) return
-    const down = (e: MouseEvent) => { if (!(e.target as Element).closest('.rail-row')) setRow(null) }
+    const down = (e: MouseEvent) => { if (!(e.target as Element).closest('.rail-row, .ack-pop')) setRow(null) }
     document.addEventListener('mousedown', down)
     return () => document.removeEventListener('mousedown', down)
   }, [row])
@@ -415,7 +415,7 @@ function LeftRail({ sid, root, reacts, drafted }: { sid: string; root: React.Ref
     const el = root.current
     const zone = el?.closest('.transcript-inner')
     if (!el || !zone) return
-    const skip = (at: EventTarget | null) => !!(at as Element | null)?.closest?.('.rail-row, button, a, input, textarea, .note-card')
+    const skip = (at: EventTarget | null) => !!(at as Element | null)?.closest?.('.rail-row, .ack-pop, button, a, input, textarea, .note-card')
     const hit = (x: number, y: number) => {
       const r = el.getBoundingClientRect()
       if (x < Math.max(20, r.left - 40) || x > r.left - 4 || y < r.top - 14 || y > r.bottom) return null
@@ -445,21 +445,42 @@ function LeftRail({ sid, root, reacts, drafted }: { sid: string; root: React.Ref
   }, [root])
 
   const all = target && !rows.some((r) => r.top === target.top) ? [...rows, { top: target.top, items: [] }] : rows
-  // The row and the remove button to its left stay right of the transcript's edge, clear of the sidebar.
-  const pop = useRef<HTMLDivElement>(null)
-  useLayoutEffect(() => {
-    const el = pop.current, pane = el?.closest('.transcript')
-    if (!el || !pane) return
-    el.style.left = ''
-    const left = Math.min(...[...el.children].map((c) => c.getBoundingClientRect().left))
-    const min = pane.getBoundingClientRect().left + 8
-    if (left < min) el.style.left = `${el.offsetLeft + min - left}px`
-  })
+  // The row opens above its button, over the session's header, so the body of the page holds it
+  // (the transcript's scroll would clip it). It opens below only when the top of the screen leaves
+  // no room. The row and the remove button to its left stay inside the transcript's left and right
+  // edges, clear of the sidebar. A scroll or a resize places it again.
+  const pop = useRef<HTMLDivElement>(null), spot = useRef<HTMLSpanElement>(null)
+  const placePop = () => {
+    const el = pop.current, at = spot.current?.parentElement, pane = at?.closest('.transcript')
+    if (!el || !at || !pane) return
+    el.style.setProperty('--fs', getComputedStyle(at).getPropertyValue('--fs'))
+    el.style.left = el.style.top = '0px'
+    const a = at.getBoundingClientRect(), box = pane.getBoundingClientRect(), own = el.getBoundingClientRect()
+    const kids = [...el.children].map((c) => c.getBoundingClientRect())
+    const left = Math.min(...kids.map((r) => r.left)), right = Math.max(...kids.map((r) => r.right))
+    const min = box.left + 8, max = box.right - 8
+    let x = a.left - 6
+    if (x + left < min) x = min - left
+    else if (x + right > max) x = Math.max(max - right, min - left)
+    const top = (parseFloat(getComputedStyle(el).scrollMarginTop) || 0) + 4
+    const y = a.top - 4 - own.height < top ? a.bottom + 4 : a.top - 4 - own.height
+    el.style.left = `${x}px`
+    el.style.top = `${y}px`
+  }
+  useLayoutEffect(placePop)
+  useEffect(() => {
+    if (!row) return
+    const again = () => placePop()
+    document.addEventListener('scroll', again, true)
+    addEventListener('resize', again)
+    return () => { document.removeEventListener('scroll', again, true); removeEventListener('resize', again) }
+  }, [row])
   // A passage's row of emoji and its emoji search, when open.
   const popFor = (p: Pick) => {
     const on = onOf(p)
     return <>
-      {row === p.id && (
+      {row === p.id && <span ref={spot} hidden />}
+      {row === p.id && createPortal(
         <div className="ack-pop" ref={pop}>
         {/* Takes your reactions off this passage: outside the row, so it can't be mistaken for an emoji. */}
         {on.size > 0 && <button className="ack-clear" data-emoji="remove" onClick={() => toggle('remove', p)}><XIcon size={14} /></button>}
@@ -468,7 +489,7 @@ function LeftRail({ sid, root, reacts, drafted }: { sid: string; root: React.Ref
           <button className="more-emoji" data-emoji="+" onClick={() => toggle('+', p)}>+</button>
           <button className="more-emoji" data-emoji="comment" onClick={() => toggle('comment', p)}><CommentIcon size={17} /></button>
         </div>
-        </div>
+        </div>, document.body,
       )}
       {search === p.id && <EmojiPicker onPick={(e) => toggle(e, p)} onClose={() => setSearch(null)} />}
     </>
