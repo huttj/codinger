@@ -15,6 +15,7 @@ import { XIcon } from './Icons.tsx'
 import { AppearancePanel } from './AppearanceDialog.tsx'
 import { StartContext } from './StartContext.tsx'
 import { CostPanel } from './CostPanel.tsx'
+import { EstimatesPanel } from './EstimatesPanel.tsx'
 import { RemotePanel } from './RemotePanel.tsx'
 import { DEFAULT_CACHE_GUARD } from '../../../shared/cache.ts'
 import { KEEP_WARM } from '../../../shared/notes.ts'
@@ -24,7 +25,7 @@ const GUARDS = [0, 20_000, 50_000, 100_000, 250_000, 500_000]
 const WARM_HOURS = [0, 1, 2, 4, 6, 8, 12]
 const WARM_MAX = [200_000, 300_000, 500_000, 750_000, 1_000_000]
 const WARM_USAGE = [50, 70, 80, 90, 100]
-const PAGES = [['general', 'General'], ['cost', 'Plan and cost'], ['appearance', 'Appearance'], ['context', 'Start-up context'], ['files', 'Notes files'], ['remote', 'Remote access']] as const
+const PAGES = [['general', 'General'], ['cost', 'Plan and cost'], ['estimates', 'Estimates'], ['appearance', 'Appearance'], ['context', 'Start-up context'], ['files', 'Notes files'], ['remote', 'Remote access']] as const
 export type Page = typeof PAGES[number][0]
 
 type FileRow = { path: string; builtIn: boolean; exists: boolean; versions: number; last: number | null }
@@ -177,6 +178,7 @@ export function SettingsDialog({ onClose }: { onClose(): void }) {
             </label>
           </section>}
           {page === 'cost' && <section className="settings-page"><CostPanel /></section>}
+          {page === 'estimates' && <section className="settings-page"><EstimatesPanel onClose={onClose} /></section>}
           {page === 'appearance' && <section className="settings-page"><AppearancePanel /></section>}
           {page === 'context' && <section className="settings-page"><StartContext /></section>}
           {page === 'remote' && <section className="settings-page"><RemotePanel /></section>}

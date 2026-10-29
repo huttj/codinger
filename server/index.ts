@@ -35,7 +35,7 @@ import { AGENTS_FILE, agentsPrompt, readAgentsMd, writeAgentsMd } from './agents
 import { handleMcp, type Tool } from './mcp.ts'
 import { spendSince, spendText } from './spend.ts'
 import { backfillSubagentSpend } from './subspend.ts'
-import { ESTIMATE_TOOLS, estimateTools, estimatesPrompt, estimatesReply } from './estimates.ts'
+import { ESTIMATE_TOOLS, backfillActive, estimateTools, estimatesPrompt, estimatesReply } from './estimates.ts'
 import { answered, askTools, forgetAsks, startAsks } from './asks.ts'
 import { MAIL_TOOLS, flushMail, mailTools, release, startMail, stepped, takeMail, turnEnded, userWrote } from './mail.ts'
 import { AUTOPILOT_MODES, amount, nudge, startAutopilot, usedOf, verdict } from './autopilot.ts'
@@ -1742,6 +1742,7 @@ server.listen(PORT, '127.0.0.1', () => {
   startRemote(PORT, artifactsPort, (remote) => broadcast({ type: 'remote', remote }))
   startUpdates({ root: ROOT, mode: () => settings.autoUpdate ?? 'ask', busy: () => [...sessions.values()].some(busy), restart, onChange: (update) => broadcast({ type: 'update', update }) })
   findDevice((device) => broadcast({ type: 'device', device }))
+  void backfillActive((sid) => sessions.get(sid)?.meta.claudeSessionId).catch(() => {})
 })
 
 // ---- restarting itself --------------------------------------------------------

@@ -1,7 +1,9 @@
 // Estimates in agent time and dollars, and what the work really took. An agent
 // need not estimate; when it does, it saves the estimate before the work and
 // calls save_actual after it, and Codinger measures the time and spend between
-// the two from the transcript (server/spend.ts). Each pair goes to
+// the two from the transcript (server/spend.ts). The time is the time of the
+// session's turns (active), not the time on the clock: the waits between turns,
+// for the user or a task, do not count. Each pair goes to
 // estimates.jsonl, and the prompt quotes the ratios found so far, so the next
 // estimate starts from them. Settings.estimates turns it all off.
 
@@ -9,7 +11,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { DATA } from './store.ts'
-import { spendSince } from './spend.ts'
+import { activeSince, spendSince } from './spend.ts'
 import type { Tool } from './mcp.ts'
 import type { SessionMeta } from '../shared/types.ts'
 import type { EstimatesFound, EstimatesReply } from '../shared/estimates.ts'
@@ -18,7 +20,10 @@ const FILE = path.join(DATA, 'estimates.jsonl')
 export const ESTIMATE_TOOLS = ['read_spend', 'save_estimate', 'save_actual']
 
 type Estimate = { id: string; t: number; sid: string; cwd: string; model?: string; ctx: number; task: string; minutes: number; usd?: number; humanHours?: number }
-type Actual = { id: string; t: number; minutes: number; usd: number; calls: number; output: number; read: number; note?: string }
+// minutes: the time on the clock from save_estimate to save_actual; active: the time of the turns in it.
+// Pairs saved before active was measured get it from backfillActive.
+type Actual = { id: string; t: number; minutes: number; active?: number; usd: number; calls: number; output: number; read: number; note?: string }
+const took = (a: Actual) => a.active ?? a.minutes
 
 function load() {
   const est = new Map<string, Estimate>(), act = new Map<string, Actual>()
@@ -42,9 +47,9 @@ function found(): EstimatesFound {
   const pairs = [...act.values()].flatMap((a) => { const e = est.get(a.id); return e ? [{ e, a }] : [] })
   return {
     n: pairs.length,
-    time: median(pairs.filter((p) => p.e.minutes > 0).map((p) => p.a.minutes / p.e.minutes)),
+    time: median(pairs.filter((p) => p.e.minutes > 0).map((p) => took(p.a) / p.e.minutes)),
     cost: median(pairs.filter((p) => p.e.usd).map((p) => p.a.usd / p.e.usd!)),
-    perHour: median(pairs.filter((p) => p.e.humanHours).map((p) => p.a.minutes / p.e.humanHours!)),
+    perHour: median(pairs.filter((p) => p.e.humanHours).map((p) => took(p.a) / p.e.humanHours!)),
     usdPerHour: median(pairs.filter((p) => p.e.humanHours).map((p) => p.a.usd / p.e.humanHours!)),
   }
 }
@@ -56,7 +61,7 @@ export function estimatesReply(title: (sid: string) => string | undefined): Esti
     const a = act.get(e.id)
     return {
       id: e.id, t: e.t, sid: e.sid, title: title(e.sid), task: e.task, minutes: e.minutes, usd: e.usd, humanHours: e.humanHours,
-      ...(a ? { actual: { minutes: a.minutes, usd: a.usd, calls: a.calls, note: a.note } } : {}),
+      ...(a ? { actual: { t: a.t, minutes: took(a), wall: a.minutes, usd: a.usd, calls: a.calls, note: a.note } } : {}),
     }
   })
   return { rows, found: found() }
@@ -77,8 +82,9 @@ ${seen} Most of the cost is cache reads: each call reads the whole context again
 grows with the size of your context, not only with the size of the work.
 When you give an estimate, save it with save_estimate before you start the work. When the work
 is done, call save_actual: Codinger measures the time and cost between the two calls and
-compares them with your estimate. Tell the user both. read_spend shows what this session has
-spent so far.
+compares them with your estimate. The time counts only your turns: the time when you wait for
+the user or for a background task between turns does not count. Tell the user both. read_spend
+shows what this session has spent so far.
 `
 }
 
@@ -109,7 +115,7 @@ export function estimateTools(id: string, meta: () => SessionMeta): Tool[] {
     },
     {
       name: 'save_actual',
-      description: 'The work you estimated is done: Codinger measures the time and spend since save_estimate, saves them next to the estimate, and returns both.',
+      description: 'The work you estimated is done: Codinger measures the time of your turns and the spend since save_estimate (the waits between turns do not count), saves them next to the estimate, and returns both.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -124,16 +130,29 @@ export function estimateTools(id: string, meta: () => SessionMeta): Tool[] {
         if (!m.claudeSessionId) return 'This session has made no API calls yet.'
         const now = Date.now(), t = await spendSince(m.claudeSessionId, e.t)
         if (!t.calls) return 'Codinger found no API calls since the estimate yet, so it saved nothing. Call save_actual again when the work is done.'
-        const a: Actual = { id: e.id, t: now, minutes: round((now - e.t) / 60_000, 1), usd: round(t.usd), calls: t.calls, output: t.output, read: t.read, ...(args?.note ? { note: String(args.note).slice(0, 300) } : {}) }
+        const active = await activeSince(m.claudeSessionId, e.t, now)
+        const a: Actual = { id: e.id, t: now, minutes: round((now - e.t) / 60_000, 1), active: round(active / 60_000, 1), usd: round(t.usd), calls: t.calls, output: t.output, read: t.read, ...(args?.note ? { note: String(args.note).slice(0, 300) } : {}) }
         append({ k: 'actual', ...a })
         const f = found()
         return [
           `"${e.task}": estimated ${e.minutes} min${e.usd ? `, $${e.usd}` : ''}${e.humanHours ? ` (${e.humanHours} human h)` : ''}.`,
-          `Actual: ${a.minutes} min, $${a.usd.toFixed(2)}, ${a.calls} API calls, ${Math.round(a.output / 1000)}k output tokens, ${(a.read / 1e6).toFixed(2)}M cache read.`,
-          `That is ${ratio(a.minutes / e.minutes)} the estimated time${e.usd ? ` and ${ratio(a.usd / e.usd)} the estimated cost` : ''}.`,
+          `Actual: ${a.active} min of work (${a.minutes} min on the clock), $${a.usd.toFixed(2)}, ${a.calls} API calls, ${Math.round(a.output / 1000)}k output tokens, ${(a.read / 1e6).toFixed(2)}M cache read.`,
+          `That is ${ratio(took(a) / e.minutes)} the estimated time${e.usd ? ` and ${ratio(a.usd / e.usd)} the estimated cost` : ''}.`,
           f.n >= 2 && f.time != null ? `Over all ${f.n} saved estimates, the median is ${ratio(f.time)} the estimated time${f.cost != null ? ` and ${ratio(f.cost)} the cost` : ''}.` : '',
         ].filter(Boolean).join('\n')
       },
     },
   ]
+}
+
+// Once, at start: the active time of the pairs saved before Codinger measured it.
+// csid gives a session's Claude Code session id; a pair whose transcript is gone keeps its clock time.
+export async function backfillActive(csid: (sid: string) => string | null | undefined) {
+  const { est, act } = load()
+  for (const a of act.values()) {
+    const e = est.get(a.id), c = e && a.active == null ? csid(e.sid) : null
+    if (!e || !c) continue
+    const ms = await activeSince(c, e.t, a.t)
+    if (ms > 0) append({ k: 'actual', ...a, active: round(ms / 60_000, 1) })
+  }
 }

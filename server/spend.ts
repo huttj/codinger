@@ -71,6 +71,42 @@ export async function spendSince(csid: string, since = 0): Promise<Totals> {
   return t
 }
 
+// The time the session worked between since and until, in ms: the time of its
+// turns, and of its subagents' turns. A turn runs from a prompt to the answer's
+// end_turn (or to the last line before the next prompt, when it was stopped).
+// The time between a turn's end and the next prompt is waiting: for the user,
+// for a background task or for a message. It does not count.
+const ENDS = new Set(['end_turn', 'stop_sequence', 'max_tokens', 'refusal'])
+const isPrompt = (m: any) => m.type === 'user' && !(Array.isArray(m.message?.content) && m.message.content.some((c: any) => c?.type === 'tool_result'))
+export async function activeSince(csid: string, since: number, until: number): Promise<number> {
+  const spans: [number, number][] = []
+  for (const f of transcripts(csid)) {
+    let open: number | null = null, last = 0
+    const rl = readline.createInterface({ input: fs.createReadStream(f), crlfDelay: Infinity })
+    try {
+      for await (const line of rl) {
+        if (!line.includes('"timestamp"')) continue
+        let m: any
+        try { m = JSON.parse(line) } catch { continue }
+        const t = Date.parse(m.timestamp)
+        if (!(t > 0)) continue
+        if (isPrompt(m)) { if (open != null) spans.push([open, last]); open = t }
+        last = t
+        if (open != null && m.type === 'assistant' && ENDS.has(m.message?.stop_reason)) { spans.push([open, t]); open = null }
+      }
+    } catch {}
+    if (open != null) spans.push([open, last])
+  }
+  // The union of the spans, cut to since–until.
+  let ms = 0, end = since
+  for (const [a, b] of spans.map(([a, b]) => [Math.max(a, since), Math.min(b, until)]).filter(([a, b]) => b > a).sort((x, y) => x[0] - y[0])) {
+    if (b <= end) continue
+    ms += b - Math.max(a, end)
+    end = b
+  }
+  return ms
+}
+
 const tok = (n: number) => n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}k` : String(n)
 const pct = (x: number) => `${(x * 100).toFixed(x < 0.01 ? 2 : 1)}%`
 const mins = (ms: number) => ms < 90_000 ? `${Math.round(ms / 1000)} s` : ms < 2 * 3_600_000 ? `${Math.round(ms / 60_000)} min` : `${(ms / 3_600_000).toFixed(1)} h`

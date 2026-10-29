@@ -1327,9 +1327,21 @@ body.sorting, body.sorting * { cursor: grabbing !important; user-select: none; }
 .cost-price { width: 70px; padding: 2px 6px; }
 .cost-table td:not(:first-child), .cost-table th:not(:first-child) { text-align: right; }
 .cost-table tr.cost-cur td { font-weight: 600; }
-.cost-estimates td:nth-child(2) { text-align: left; } .cost-estimates th:nth-child(2) { text-align: left; }
-.cost-estimates td.muted { text-align: center; }
-.cost-estimates td:nth-child(n+3) { white-space: nowrap; }
+/* The Estimates page (EstimatesPanel.tsx): the medians as tiles, then a card for each estimate. */
+.est-tiles { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; }
+.est-tile { display: flex; flex-direction: column; gap: 2px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; }
+.est-tile b { font-size: calc(17px * var(--fs, 1)); font-weight: 600; font-variant-numeric: tabular-nums; }
+.est-tile span { font-size: calc(12px * var(--fs, 1)); color: var(--muted); }
+.est-tile-note { flex-basis: 100%; order: -1; font-size: calc(12px * var(--fs, 1)); }
+.est-list { display: flex; flex-direction: column; gap: 10px; }
+.est-card { border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; display: flex; flex-direction: column; gap: 6px; font-size: calc(13px * var(--fs, 1)); }
+.est-card h4 { margin: 0; font-size: calc(14px * var(--fs, 1)); font-weight: 600; line-height: 1.35; }
+.est-meta { font-size: calc(12px * var(--fs, 1)); }
+.est-meta button.link { font-size: inherit; padding: 0; }
+.est-grid { display: grid; justify-content: start; grid-template-columns: auto repeat(3, minmax(64px, max-content)); gap: 2px 24px; font-variant-numeric: tabular-nums; }
+.est-grid > :nth-child(-n+4) { font-size: calc(12px * var(--fs, 1)); }
+.est-ratio { font-weight: 600; }
+.est-note { margin: 0; padding: 6px 10px; border-radius: 6px; background: var(--panel); line-height: 1.45; }
 .cost-review { border-top: 1px solid var(--line); padding: 6px 0; }
 .cost-review summary { cursor: pointer; font-size: calc(13px * var(--fs, 1)); }
 .cost-review[open] summary { margin-bottom: 6px; }
@@ -1589,14 +1601,6 @@ html { touch-action: manipulation; -webkit-text-size-adjust: 100%; text-size-adj
   .settings-tabs { flex-direction: row; overflow-x: auto; scrollbar-width: none; border-right: none; border-bottom: 1px solid var(--line); padding: 0 0 6px; }
   .settings-tabs button { white-space: nowrap; flex: none; }
   .settings-page .cost-table { display: block; overflow-x: auto; max-width: 100%; }
-  /* The estimates have too many columns for a phone: each one shows as a block of labelled lines. */
-  .settings-page .cost-estimates thead { display: none; }
-  .settings-page .cost-estimates :is(tbody, tr) { display: block; }
-  .settings-page .cost-estimates tr { border-top: 1px solid var(--line); padding: 6px 0; }
-  .settings-page .cost-estimates td { display: flex; gap: 8px; border-top: none; padding: 1px 0; text-align: left; white-space: normal; }
-  .settings-page .cost-estimates td:first-child { font-weight: 500; padding-bottom: 3px; }
-  .settings-page .cost-estimates td::before { content: attr(data-label); flex: none; width: 5.5em; color: var(--muted); }
-  .settings-page .cost-estimates td:first-child::before { content: none; }
 }
 
 /* A published transcript (web/src/share.tsx), and the dialog that publishes one (PublishDialog.tsx). */
