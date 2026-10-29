@@ -118,8 +118,10 @@ export class Hub extends DurableObject<Env> {
         case 'POST /_remote/push/send': {
           const m = await this.machineOf(req)
           if (!m) return json({ error: 'Not allowed' }, 403)
-          const body = await req.json<{ title?: string; body?: string; session?: string }>()
-          const payload = JSON.stringify({ title: String(body.title ?? 'Codinger').slice(0, 200), body: String(body.body ?? '').slice(0, 500), machine: m.name, session: String(body.session ?? '') })
+          const body = await req.json<{ title?: string; body?: string; session?: string; icon?: string }>()
+          // icon: the session's critter, a small PNG data URL (Chrome shows it; an iPhone shows the app's icon).
+          const icon = typeof body.icon === 'string' && body.icon.startsWith('data:image/png;base64,') && body.icon.length <= 2600 ? body.icon : undefined
+          const payload = JSON.stringify({ title: String(body.title ?? 'Codinger').slice(0, 200), body: String(body.body ?? '').slice(0, 500), machine: m.name, session: String(body.session ?? ''), ...(icon ? { icon } : {}) })
           // sent: the browsers that took it. 0 when no browser has notifications on.
           return json({ ok: true, ...await this.push(payload) })
         }
@@ -139,8 +141,9 @@ export class Hub extends DurableObject<Env> {
         return await this.share(req, m, share[1], share[2])
       }
       const forget = /^\/_remote\/machines\/([a-z0-9-]{1,40})$/.exec(p)
+      // Removing a machine: from the web, or from one of your machines (Settings → Remote access).
       if (forget && req.method === 'DELETE') {
-        if (!await this.session(req) || !sameOrigin(req, url)) return json({ error: 'Not signed in' }, 401)
+        if (!await this.machineOf(req) && (!await this.session(req) || !sameOrigin(req, url))) return json({ error: 'Not signed in' }, 401)
         await this.forget(forget[1])
         return json({ ok: true })
       }

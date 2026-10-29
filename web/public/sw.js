@@ -10,6 +10,8 @@ self.addEventListener('push', (e) => {
   // One notification for each session: a new one takes the place of the old.
   e.waitUntil(self.registration.showNotification(d.title || 'Codinger', {
     body: d.body || '',
+    // The session's critter; an iPhone shows the app's icon in its place.
+    ...(d.icon ? { icon: d.icon } : {}),
     tag: `${d.machine}~${d.session}`,
     renotify: true,
     data: { machine: d.machine || '', session: d.session || '' },

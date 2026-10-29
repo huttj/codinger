@@ -6,6 +6,7 @@ import type { Appearance } from './appearance.ts'
 import type { Artifact, PreviewTarget, ProlificaState } from './artifacts.ts'
 import type { UpdateMode, UpdateStatus } from './update.ts'
 import type { Published } from './share.ts'
+import type { EmojiUse } from './emoji.ts'
 import type { FileVerdict, LineComment } from './review.ts'
 
 export type Status =
@@ -209,6 +210,7 @@ export type Settings = {
   mcpStartOff?: boolean; mcpAlways?: string[]; mcpClaude?: boolean
   plan?: { tier: string; usd: number; yearly?: boolean }; reviewSeen?: { week?: string; month?: string }
   autoUpdate?: UpdateMode   // updates from origin/main (server/update.ts); unset: ask
+  emoji?: EmojiUse          // the reaction emoji you use, to put first in the rows and the picker
 }
 
 export type ServerMsg =

@@ -167,3 +167,23 @@ export function askTools(id: string): Tool[] {
     },
   ]
 }
+
+// ---- Settings ---------------------------------------------------------------
+
+// Every session's asks, for the Asks page in Settings.
+export function asksReply(title: (sid: string) => string | undefined) {
+  const st = load()
+  return {
+    schedules: st.schedules.map((s) => ({ ...s, title: title(s.sid) })),
+    open: st.open.map((o) => ({ ...o, title: title(o.sid) })),
+  }
+}
+
+// The user cancelled a scheduled ask in Settings. The session's transcript says so; its agent sees it in list_asks.
+export function cancelAsk(id: string): boolean {
+  const s = load().schedules.find((x) => x.id === id)
+  if (!s) return false
+  update((x) => { x.schedules = x.schedules.filter((y) => y.id !== id) })
+  ctx.notice(s.sid, `You cancelled the scheduled ask "${s.question}" in Settings.`)
+  return true
+}

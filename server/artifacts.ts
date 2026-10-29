@@ -441,6 +441,23 @@ async function holding(cands: Where[string], b: Buffer, hash: string, json: bool
   return null
 }
 
+// Run each on its item, at most n at a time. After the first error no new one starts, and that
+// error is thrown when the ones that run have ended.
+async function pool<T>(items: T[], n: number, each: (x: T) => Promise<void>) {
+  const queue = [...items]
+  let failed = null as { e: unknown } | null
+  const worker = async () => {
+    for (let x; !failed && (x = queue.shift()) !== undefined;) {
+      try { await each(x) } catch (e) { failed ??= { e } }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(n, items.length) }, worker))
+  if (failed) throw failed.e
+}
+
+// The calls to Prolifica that a publish makes at once.
+const AT_ONCE = 6
+
 // The publishes that run, and those that ended until the user closes their notice (forget).
 const publishing: Record<string, ArtifactPublishing> = {}
 
@@ -495,17 +512,35 @@ export async function publish(name: string, opts: { visibility?: Visibility; not
   const where = before ? await sync(before, m) : {}
   const next = before ? before.version + 1 : 1
   const data: ArtifactPublished['data'] = {}
-  // Send one file, unless it went up as it is already. Its dataset id. It keeps its path under
-  // data/ there, in a folder named after the artifact: data/media/a.jpg is <name>/media/a.jpg.
-  const send = async (file: string, description?: string) => {
-    if (data[file]) return { id: data[file].id, sent: false }   // bound twice, or a source that is bound too
-    const bytes = bytesOf.get(file) ?? src.read(file)
-    const label = `Data ${Object.keys(data).length + 1} of ${files.length}: ${file.replace(/^data\//, '')}`
-    const at = n
-    step(`${label}${bytes ? `, ${mb(bytes.length)}` : ''}`, at, of)
-    n += TRIP + (bytes?.length ?? 0)
+  // Each file once: a source first, with its description, then each bound file. A file that is
+  // bound twice, or a source that is bound too, goes up once.
+  const sources = Object.entries(m.sources ?? {})
+  const jobs = new Map<string, string | undefined>()
+  for (const [file, s] of sources) if (!jobs.has(file)) jobs.set(file, s.description ?? `The source data of "${m.title ?? name}", as it was collected.`)
+  for (const [slot, file] of Object.entries(m.bindings ?? {})) if (!file.startsWith('prolifica:') && !jobs.has(file)) jobs.set(file, m.slots?.[slot]?.description)
+  for (const file of jobs.keys()) {
+    const bytes = bytesOf.get(file)
     if (!bytes) throw new Error(`Version ${local} has no ${file}.`)
     if (bytes.length > 20 * 1024 * 1024) throw new Error(`${file} is ${(bytes.length / 1048576).toFixed(1)} MB; Prolifica takes files of up to 20 MB.`)
+  }
+  // The files go up AT_ONCE at a time. The bar moves by the bytes of each that went out, and
+  // the step counts the files that Prolifica has saved.
+  const base = n
+  const moved = new Map<string, number>()
+  const total = [...jobs.keys()].reduce((t, f) => t + bytesOf.get(f)!.length, 0)
+  let saved = 0
+  const tell = () => {
+    let k = 0, out = 0
+    for (const [f, x] of moved) { k += x; out += Math.max(0, Math.min(x - TRIP / 2, bytesOf.get(f)!.length)) }
+    const left = out < total ? `, ${mb(out)} of ${mb(total)} sent` : saved < jobs.size ? '; Prolifica is saving the rest' : ''
+    step(`Data: ${saved} of ${jobs.size} ${jobs.size === 1 ? 'file' : 'files'} saved${left}`, base + k, of)
+  }
+  n += [...jobs.keys()].reduce((t, f) => t + TRIP + bytesOf.get(f)!.length, 0)
+  // Send one file, unless it went up as it is already. Its dataset id. It keeps its path under
+  // data/ there, in a folder named after the artifact: data/media/a.jpg is <name>/media/a.jpg.
+  const sentOf: Record<string, { id: string; sent: boolean }> = {}
+  const send = async (file: string, description?: string): Promise<{ id: string; sent: boolean }> => {
+    const bytes = bytesOf.get(file)!
     const hash = sha(bytes)
     const prev = before?.data[file]
     if (prev?.sha === hash) { data[file] = { ...prev }; return { id: prev.id, sent: false } }
@@ -519,17 +554,19 @@ export async function publish(name: string, opts: { visibility?: Visibility; not
     const dpath = `${name}/${prev ? `${sub.slice(0, sub.length - ext.length)}.v${next}${ext}` : sub}`
     const q = new URLSearchParams({ path: dpath })
     if (description) q.set('description', description)
-    // The bar moves as the file goes out; the step says how much of it went.
-    const sent = (k: number) => step(k < bytes.length ? `${label}, ${mb(k)} of ${mb(bytes.length)}` : `${label}: sent, Prolifica saves it`, at + TRIP / 2 + k, of)
-    const ds = await call(`/api/data?${q}`, { method: 'POST', headers: { 'content-type': typeOf(file) }, body: new Uint8Array(bytes) }, sent)
+    const ds = await call(`/api/data?${q}`, { method: 'POST', headers: { 'content-type': typeOf(file) }, body: new Uint8Array(bytes) }, (k) => { moved.set(file, TRIP / 2 + k); tell() })
     data[file] = { sha: hash, id: ds.id, path: dpath }
     return { id: ds.id as string, sent: true }
   }
-  // The source data first, with where it came from, so the bound data can say it was made from it.
-  const sources = Object.entries(m.sources ?? {})
+  tell()
+  await pool([...jobs], AT_ONCE, async ([file, description]) => {
+    sentOf[file] = await send(file, description)
+    moved.set(file, TRIP + bytesOf.get(file)!.length); saved++; tell()
+  })
+  // The source data says where it came from, so the bound data can say it was made from it.
   const sourceIds: Record<string, string> = {}
   for (const [file, s] of sources) {
-    const { id, sent } = await send(file, s.description ?? `The source data of "${m.title ?? name}", as it was collected.`)
+    const { id, sent } = sentOf[file]
     sourceIds[file] = id
     data[file].source = true
     // Prolifica takes only a fixed set of methods: a free-text method goes to the notes, as "other".
@@ -543,21 +580,23 @@ export async function publish(name: string, opts: { visibility?: Visibility; not
     data[file].said = said
   }
   const bindings: Record<string, string> = {}
+  for (const [slot, file] of Object.entries(m.bindings ?? {})) bindings[slot] = file.startsWith('prolifica:') ? file.slice(10) : sentOf[file].id
   // Data Prolifica made public along the way: a page that is public already shows the bound data,
   // so the sources go public as soon as it says it was made from them.
   const madePublic: { path?: string; id: string }[] = []
-  for (const [slot, file] of Object.entries(m.bindings ?? {})) {
-    if (file.startsWith('prolifica:')) { bindings[slot] = file.slice(10); continue }
-    bindings[slot] = (await send(file, m.slots?.[slot]?.description)).id
-    if (file in sourceIds) continue
-    // What it was made from. Set again when that changed; Prolifica keeps it apart from the file.
+  // What each bound file was made from. Set again when that changed; Prolifica keeps it apart from the file.
+  const froms = [...new Map(Object.entries(m.bindings ?? {}).flatMap(([slot, file]) => {
+    if (file.startsWith('prolifica:') || file in sourceIds) return []
     const from = sources.filter(([f, s]) => f !== file && (!s.slots || s.slots.includes(slot))).map(([f]) => sourceIds[f]).sort()
-    if (!from.length || JSON.stringify(data[file].from ?? []) === JSON.stringify(from)) continue
-    const ds = await call(`/api/data/${encodeURIComponent(bindings[slot])}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ derived_from: from }) })
+    return !from.length || JSON.stringify(data[file].from ?? []) === JSON.stringify(from) ? [] : [[file, from] as const]
+  }))]
+  if (froms.length) step(`Saying what the data was made from`, n, of)
+  await pool(froms, AT_ONCE, async ([file, from]) => {
+    const ds = await call(`/api/data/${encodeURIComponent(data[file].id)}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ derived_from: from }) })
     madePublic.push(...(ds?.madePublic ?? []))
     // A Prolifica that does not take derived_from yet: it is tried again on the next publish.
     if (Array.isArray(ds?.derivedFrom) && from.every((id) => ds.derivedFrom.some((d: { id: string }) => d.id === id))) data[file].from = from
-  }
+  })
   const visibility = opts.visibility ?? before?.visibility ?? 'public'
   const body = (id?: string) => JSON.stringify({
     id, html: src.read('index.html')?.toString('utf8') ?? '', title: m.title ?? name, description: m.description,

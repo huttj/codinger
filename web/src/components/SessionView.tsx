@@ -233,11 +233,11 @@ function SessionMenu({ m, open, setOpen, onPublish }: { m: SessionMeta; open: Me
     worker && <button key="autopilot" className={autopilotOn(m) ? 'autopilot-on' : ''} onClick={() => setOpen('autopilot')}>
       {autopilotOn(m) ? `Autopilot · ${budgetLabel(ap!.unit, Math.max(0, ap!.budget - ap!.used))} left` : 'Autopilot'}
     </button>,
+    worker && <button key="star" onClick={act(() => api(`/api/sessions/${m.id}`, 'PATCH', { starred: !m.starred }))}>{m.starred ? 'Remove star' : 'Star'}</button>,
     worker && <button key="publish" onClick={act(onPublish)}>{m.share ? 'Published transcript' : 'Publish transcript'}</button>,
     worker && !m.archived && <button key="close" title="Archive session" onClick={act(() => closeSession(m.id))}>Close</button>,
     worker && m.archived && <button key="reopen" onClick={act(() => api(`/api/sessions/${m.id}`, 'PATCH', { archived: false }))}>Reopen</button>,
     worker && m.archived && <button key="delete" className="danger" title="Remove from Codinger (it stays in Resume)" onClick={act(() => { if (confirm(`Delete "${m.title}" from Codinger? Claude Code's own transcript is kept, so you can still find it under Resume.`)) return api(`/api/sessions/${m.id}`, 'DELETE').then(deselect) })}>Delete</button>,
-    worker && <button key="star" onClick={act(() => api(`/api/sessions/${m.id}`, 'PATCH', { starred: !m.starred }))}>{m.starred ? 'Remove star' : 'Star'}</button>,
   ].filter(Boolean)
   // Press, drag to an item and release to choose it, as in a native menu. A press opens the
   // menu; a release over an item clicks it, a release away from the menu closes it, and a

@@ -27,6 +27,7 @@ import WebSocket, { WebSocketServer } from 'ws'
 import { machineName, PART_BYTES, PARTS_AHEAD, PING, PONG, REQ_HEADERS, RES_HEADERS, type HubMsg, type MachineMsg } from '../shared/remote.ts'
 import type { RemoteStatus } from '../shared/types.ts'
 import { DATA } from './store.ts'
+import { iconOf } from './icons.ts'
 
 const BATCH_MS = Number(process.env.CODINGER_REMOTE_BATCH_MS) || 1000
 // A ping to the hub this often; no answer by the next one ends the socket, and it connects again.
@@ -322,7 +323,7 @@ class Chan {
 
 // ---- reaching your other machines -----------------------------------------------
 
-// /api/remote/machines[/<name>/label|rename], /api/remote/push/(key|subscribe|unsubscribe), and
+// /api/remote/machines[/<name>[/label|rename]], /api/remote/push/(key|subscribe|unsubscribe), and
 // /api/remote/m/<name>/…: on to the hub, with this machine's token.
 export async function remoteProxy(req: http.IncomingMessage, res: http.ServerResponse, url: URL) {
   if (!saved.token) { res.writeHead(409, { 'content-type': 'application/json' }).end(JSON.stringify({ error: 'This machine is not connected to web.codinger.app' })); return }
@@ -346,8 +347,9 @@ export async function remoteProxy(req: http.IncomingMessage, res: http.ServerRes
 // A push notification to each browser that subscribed (remote/src/push.ts), if this machine is connected.
 // Why no notification went, or null when one did. A hub from before October 2026 does not say how
 // many browsers took it: then a push it took counts as sent.
-export async function remoteNotify(n: { title: string; body: string; session: string }): Promise<string | null> {
+export async function remoteNotify(n: { title: string; body: string; session: string; icon?: string }): Promise<string | null> {
   if (!saved.token || !saved.on) return 'this machine is not linked to the Codinger hub, or the link is off'
+  n = { ...n, icon: n.icon ?? iconOf(n.session) }
   try {
     const r = await fetch(hubUrl() + '/_remote/push/send', {
       method: 'POST',

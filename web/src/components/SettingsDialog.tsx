@@ -20,12 +20,13 @@ import { RemotePanel } from './RemotePanel.tsx'
 import { DEFAULT_CACHE_GUARD } from '../../../shared/cache.ts'
 import { KEEP_WARM } from '../../../shared/notes.ts'
 import { disablePush, enablePush, pushSubscribed, pushSupported } from '../push.ts'
+import { AsksPanel } from './AsksPanel.tsx'
 
 const GUARDS = [0, 20_000, 50_000, 100_000, 250_000, 500_000]
 const WARM_HOURS = [0, 1, 2, 4, 6, 8, 12, 16, 24]
 const WARM_MAX = [200_000, 300_000, 500_000, 750_000, 1_000_000]
 const WARM_USAGE = [50, 70, 80, 90, 100]
-const PAGES = [['general', 'General'], ['cost', 'Plan and cost'], ['estimates', 'Estimates'], ['appearance', 'Appearance'], ['context', 'Start-up context'], ['files', 'Notes files'], ['remote', 'Remote access']] as const
+const PAGES = [['general', 'General'], ['cost', 'Plan and cost'], ['estimates', 'Estimates'], ['appearance', 'Appearance'], ['context', 'Start-up context'], ['files', 'Notes files'], ['remote', 'Remote access'], ['asks', 'Asks']] as const
 export type Page = typeof PAGES[number][0]
 
 type FileRow = { path: string; builtIn: boolean; exists: boolean; versions: number; last: number | null }
@@ -194,6 +195,7 @@ export function SettingsDialog({ onClose }: { onClose(): void }) {
           {page === 'appearance' && <section className="settings-page"><AppearancePanel /></section>}
           {page === 'context' && <section className="settings-page"><StartContext /></section>}
           {page === 'remote' && <section className="settings-page"><RemotePanel /></section>}
+          {page === 'asks' && <section className="settings-page"><AsksPanel onClose={onClose} /></section>}
           {page === 'files' && <div className="files-body">
             <nav className="files-list">
               {files.map((f) => (

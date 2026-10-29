@@ -29,6 +29,7 @@ export const UpIcon = (p: P) => <Svg {...p}><path d="M8 13V3M4 7l4-4 4 4" /></Sv
 export const ArchiveIcon = (p: P) => <Svg {...p}><rect x="2" y="3" width="12" height="3" rx="1" /><path d="M3 6v6.5a1 1 0 001 1h8a1 1 0 001-1V6M6.5 8.5h3" /></Svg>
 export const CheckIcon = (p: P) => <Svg {...p}><path d="M3 8.5l3 3 7-7" /></Svg>
 export const BlockIcon = (p: P) => <Svg {...p}><circle cx="8" cy="8" r="5.5" /><path d="M4.2 11.8l7.6-7.6" /></Svg>
+export const PlusIcon = (p: P) => <Svg {...p}><path d="M8 3v10M3 8h10" /></Svg>
 export const DashIcon = (p: P) => <Svg {...p}><path d="M4 8h8" /></Svg>
 export const BackIcon = (p: P) => <Svg {...p}><path d="M10 3L5 8l5 5" /></Svg>
 export const ChevronIcon = (p: P) => <Svg {...p}><path d="M6 3.5l4.5 4.5L6 12.5" /></Svg>

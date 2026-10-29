@@ -1,23 +1,43 @@
-// Emoji for reactions: the ones you use most come first, and the full list
-// (names from unicode-emoji-json) loads only when you search it.
+// Emoji for reactions: the ones you use most and last come first (shared/emoji.ts), and the
+// full list (names from unicode-emoji-json) loads only when you search it. The server keeps the
+// scores in its settings, so every browser has them; this browser keeps a copy for when the
+// server has none yet.
+
+import { bumpEmoji, cleanEmojiUse, emojiScore, type EmojiUse } from '../../shared/emoji.ts'
+import { api, state } from './store.ts'
 
 const KEY = 'codinger.emoji'
 const DEFAULT = ['👍', '❤️', '🎉', '💪', '😂', '🤔', '🙏', '👀', '🔥', '🙌']
 
-const counts: Record<string, number> = (() => { try { return JSON.parse(localStorage.getItem(KEY) ?? '{}') } catch { return {} } })()
+// Until October 2026 this browser kept only a count for each emoji: those start as uses of today.
+let local: EmojiUse = (() => {
+  try {
+    const v = JSON.parse(localStorage.getItem(`${KEY}.use`) ?? 'null')
+    if (v) return cleanEmojiUse(v)
+    const counts: Record<string, number> = JSON.parse(localStorage.getItem(KEY) ?? '{}')
+    return Object.fromEntries(Object.entries(counts).filter(([, n]) => n > 0).map(([e, n]) => [e, { s: n, t: Date.now() }]))
+  } catch { return {} }
+})()
+const uses = (): EmojiUse => state.settings.emoji ?? local
 
 export function usedEmoji(e: string) {
-  counts[e] = (counts[e] ?? 0) + 1
-  localStorage.setItem(KEY, JSON.stringify(counts))
-  localStorage.setItem(`${KEY}.last`, e)
+  const seed = state.settings.emoji ? undefined : local
+  local = bumpEmoji(local, e)
+  localStorage.setItem(`${KEY}.use`, JSON.stringify(local))
+  void api('/api/settings', 'PUT', { emojiUsed: e, ...(seed ? { emojiSeed: seed } : {}) }).catch(() => {})
 }
 
 // What a quick click on the reaction button puts on: the one you used last.
-export const lastEmoji = () => localStorage.getItem(`${KEY}.last`) ?? '👍'
+export function lastEmoji(): string {
+  const u = uses()
+  return Object.keys(u).sort((a, b) => u[b].t - u[a].t)[0] ?? localStorage.getItem(`${KEY}.last`) ?? '👍'
+}
 
-// The n most used, topped up from the defaults; 👍 stays first until something beats it.
+// The n with the highest score, topped up from the defaults; 👍 stays first until something beats it.
 export function topEmoji(n = 6): string[] {
-  const used = Object.keys(counts).sort((a, b) => counts[b] - counts[a] || DEFAULT.indexOf(a) - DEFAULT.indexOf(b))
+  const u = uses(), now = Date.now()
+  const score = Object.fromEntries(Object.entries(u).map(([e, x]) => [e, emojiScore(x, now)]))
+  const used = Object.keys(u).sort((a, b) => score[b] - score[a] || DEFAULT.indexOf(a) - DEFAULT.indexOf(b))
   return [...new Set([...used, ...DEFAULT])].slice(0, n)
 }
 

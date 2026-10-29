@@ -1,6 +1,7 @@
 // Settings → Remote access. On a machine: connect it to web.codinger.app (you
 // approve its code there), turn remote access off and on, or disconnect it.
 // On web.codinger.app: who is signed in, and signing out.
+// Both list your machines, each with a Remove.
 
 import { useState } from 'react'
 import { api, knownMachines, LOCAL, refreshMachines, useStore } from '../store.ts'
@@ -15,7 +16,7 @@ export function RemotePanel() {
       <p>Signed in to web.codinger.app as <b>{st.email}</b>.</p>
       {knownMachines().map((m) => (
         <div key={m.name} className="remote-machine">
-          <Names name={m.name} label={m.label} connected={m.connected} />
+          <Names name={m.name} label={m.label} connected={m.connected} removable />
         </div>
       ))}
       {!knownMachines().length && <p>No machines yet.</p>}
@@ -33,6 +34,7 @@ function MachinePanel() {
   const [hub, setHub] = useState(r?.hub ?? '')
   const [busy, setBusy] = useState(false)
   if (!r) return <p className="muted">Loading…</p>
+  const others = knownMachines().filter((m) => m.name !== r.name)
   const call = (path: string, body?: unknown) => api(`/api/remote/${path}`, 'POST', body, LOCAL)
 
   const link = async () => {
@@ -77,6 +79,14 @@ function MachinePanel() {
       <Names name={r.name} label={r.label} connected={r.connected} />
       <HubAddress hub={r.hub} onSave={(h) => void call('hub', { hub: h })} />
       <p><button onClick={() => { if (confirm(`Disconnect ${r.label ?? r.name} from web.codinger.app? To connect it again, you approve it again.`)) void call('forget') }}>Disconnect this machine</button></p>
+      {others.length > 0 && <>
+        <p className="remote-others">Your other machines</p>
+        {others.map((m) => (
+          <div key={m.name} className="remote-machine">
+            <Names name={m.name} label={m.label} connected={m.connected} removable />
+          </div>
+        ))}
+      </>}
     </div>
   )
 }
@@ -97,7 +107,8 @@ function HubAddress({ hub, onSave }: { hub: string; onSave(h: string): void }) {
 }
 
 // A machine's display name (what the sidebar shows) and its name (its id in addresses), each with a Rename.
-function Names({ name, label, connected }: { name: string; label?: string; connected: boolean }) {
+// removable: a Remove too, which deletes the machine and its token on the hub.
+function Names({ name, label, connected, removable }: { name: string; label?: string; connected: boolean; removable?: boolean }) {
   const st = useStore()
   const [edit, setEdit] = useState<'label' | 'rename' | null>(null)
   const [value, setValue] = useState('')
@@ -115,6 +126,18 @@ function Names({ name, label, connected }: { name: string; label?: string; conne
       void refreshMachines()
     } catch (e) { setErr(e instanceof Error ? e.message : String(e)) }
   }
+  const remove = async () => {
+    if (!confirm(`Remove ${label ?? name} from web.codinger.app? It disconnects at once. To connect it again, open Settings → Remote access on that machine and approve it again.`)) return
+    setErr(null)
+    try {
+      const path = `/machines/${name}`
+      if (st.web) {
+        const r = await fetch(`/_remote${path}`, { method: 'DELETE' })
+        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? `${r.status}`)
+      } else await api(`/api/remote${path}`, 'DELETE', undefined, LOCAL)
+      void refreshMachines()
+    } catch (e) { setErr(e instanceof Error ? e.message : String(e)) }
+  }
   if (edit) return (
     <form className="remote-names" onSubmit={(e) => { e.preventDefault(); void save() }}>
       <label>{edit === 'label' ? 'Display name' : 'Machine name (lower-case letters, digits and dashes)'} <input value={value} autoFocus onChange={(e) => setValue(e.target.value)} /></label>
@@ -123,10 +146,11 @@ function Names({ name, label, connected }: { name: string; label?: string; conne
       <p><button type="submit" className="primary">Save</button> <button type="button" onClick={() => setEdit(null)}>Cancel</button></p>
     </form>
   )
-  return (
+  return (<>
     <p className="remote-names">
       <b>{label ?? name}</b>{!connected && <span className="muted"> · not connected</span>}
-      <br /><span className="muted">Name <code>{name}</code> · <button className="link" onClick={() => open('label')}>Change display name</button> · <button className="link" onClick={() => open('rename')}>Rename</button></span>
+      <br /><span className="muted">Name <code>{name}</code> · <button className="link" onClick={() => open('label')}>Change display name</button> · <button className="link" onClick={() => open('rename')}>Rename</button>{removable && <> · <button className="link" onClick={() => void remove()}>Remove</button></>}</span>
     </p>
-  )
+    {err && <p className="notice error">{err}</p>}
+  </>)
 }

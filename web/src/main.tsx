@@ -17,6 +17,7 @@ import { NewSession } from './components/NewSession.tsx'
 import { Lightbox } from './components/Lightbox.tsx'
 import { Palette } from './components/Palette.tsx'
 import { PhoneSetup } from './components/PhoneSetup.tsx'
+import { useCritterIcons } from './critterIcon.tsx'
 import './push.ts'
 import './styles.css'
 
@@ -28,6 +29,7 @@ function App() {
   useEffect(() => { if (sel) opened(sel.id) }, [sel?.id])
 
   useFavicon(st.sessions, st.settings.appearance)
+  useCritterIcons(st.sessions)
 
   // The first load asks for a colour; the welcome stays until you close it.
   const [welcome, setWelcome] = useState(false)

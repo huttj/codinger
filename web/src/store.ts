@@ -514,11 +514,11 @@ export function opened(id: string) {
   const s = state.sessions.find((x) => x.id === id)
   if (s?.unread) void api(`/api/sessions/${id}/seen`).catch(() => {})
 }
-
 // Back in this window: the session it shows is seen now.
 window.addEventListener('focus', () => {
   if (state.sessions.find((x) => x.id === state.selected)?.unread) void api(`/api/sessions/${state.selected}/seen`).catch(() => {})
 })
+
 // Open a session at one of its events (a message, or the tool call in an activity row).
 export function revealEvent(sid: string, seq: number) {
   select(sid)

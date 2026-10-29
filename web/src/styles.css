@@ -209,6 +209,8 @@ body.resizing-v .splitter-v::after { background: var(--accent); }
 .remote-machine { padding: 10px 0; border-top: 1px solid var(--line); }
 .remote-machine:last-of-type { border-bottom: 1px solid var(--line); margin-bottom: 12px; }
 .remote-machine .remote-names { margin: 0; }
+.remote-panel .remote-others { margin: 20px 0 0; font-weight: 600; }
+.remote-machine .notice.error { margin: 6px 0 0; }
 .remote-code { font: 600 calc(22px * var(--fs, 1)) var(--mono, monospace); letter-spacing: .15em; }
 .head-id { font-size: calc(11.5px * var(--fs, 1)); color: var(--muted); }
 .row-remote { vertical-align: -1px; margin-right: 4px; color: var(--muted); }
@@ -581,9 +583,9 @@ textarea.agents-md { font-size: calc(12.5px * var(--fs, 1)); line-height: 1.5; r
 .md h1, .md h2, .md h3 { line-height: 1.3; margin: 1.7em 0 .5em; } .md h1 { font-size: 1.3em; } .md h2 { font-size: 1.15em; } .md h3 { font-size: 1.05em; margin-top: 1.4em; }
 .md h1, .md h2 { padding-bottom: .25em; border-bottom: 1px solid var(--line); }
 .md table { margin: .8em 0; } .md th { background: var(--panel); text-align: left; }
-.assistant-text { margin: 6px 0; }
 /* A table is no wider than its message: the cells wrap first, a path in inline code breaks after a "/" (util.ts adds a <wbr>), and only a table that still does not fit scrolls sideways. */
 .md table { display: block; max-width: 100%; width: max-content; overflow-x: auto; }
+.assistant-text { margin: 6px 0; }
 .assistant-text.streaming { opacity: .85; }
 .more { margin: .8em 0; border: 1px solid var(--line); border-radius: 8px; background: var(--card); }
 .more > summary { cursor: pointer; padding: 5px 10px; color: var(--muted); font-size: calc(13px * var(--fs, 1)); list-style: none; display: flex; gap: 6px; align-items: center; }
@@ -708,6 +710,8 @@ button.done-mark:hover { background: color-mix(in srgb, var(--ok) 12%, transpare
 .ack-row button:hover > span { transform: scale(1.2); }
 /* "+" and the comment button are as big as an emoji, so the hover circle matches. */
 .ack-row .more-emoji { display: inline-flex; align-items: center; justify-content: center; width: calc(24px * var(--fs, 1) + 8px); height: calc(24px * var(--fs, 1) + 8px); padding: 0; font-size: calc(20px * var(--fs, 1)) !important; }
+/* Their icons are SVGs, centred in the circle, and grow on hover as an emoji does. */
+.ack-row .more-emoji > span { display: flex; }
 .ack-row button.on { background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); position: relative; }
 /* An emoji you already put on comes off: hovering it says so. */
 .ack-row button.on:hover { transform: none; background: rgba(229, 83, 75, .14); box-shadow: inset 0 0 0 1.5px var(--bad); }
@@ -992,6 +996,9 @@ h1.rename { cursor: text; border-radius: 5px; } h1.rename:hover { background: rg
 .mail-pop.held .inbox-on { color: var(--warn); }
 .mail-pop .mail-text { max-height: 40vh; margin-top: 4px; }
 .composer-row { display: flex; gap: 8px; align-items: flex-end; }
+/* A long attachment name must not keep the field wide and push Stop and Send off the screen. */
+.composer-row .rich-input { min-width: 0; }
+.composer-row > button { flex: none; }
 .slash-menu { position: absolute; width: calc(min(820px, 100% - 40px) - 80px); max-height: 320px; overflow-y: auto; background: var(--card); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 6px 24px rgba(0, 0, 0, .15); padding: 4px; z-index: 10; }
 .slash-menu button, .dir-menu button { display: flex; width: 100%; text-align: left; border: none; background: none; border-radius: 6px; gap: 12px; align-items: baseline; padding: 5px 8px; }
 .slash-menu button.on, .dir-menu button.on { background: var(--accent-soft); }

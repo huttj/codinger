@@ -19,7 +19,7 @@ import { render as renderLive } from '../mdlive.ts'
 import { addDraft, api, changed, LOCAL, machineOf, dismissItem, draftsOf, markDone, removeDraft, reviveItem, setDoneText, state, uid, undismissItem, updateDraft, useStore, type AnswerDraft, type DoneDraft, type NoteDraft } from '../store.ts'
 import type { TrackedItem } from '../items.ts'
 import { focusField, RichInput, Thumbs } from './Inputs.tsx'
-import { CheckIcon, ChevronIcon, CommentIcon, TerminalIcon, UndoIcon, XIcon } from './Icons.tsx'
+import { CheckIcon, ChevronIcon, CommentIcon, PlusIcon, TerminalIcon, UndoIcon, XIcon } from './Icons.tsx'
 import { EmojiPicker } from './EmojiPicker.tsx'
 import { openFile } from './FileBrowser.tsx'
 import { ReviewCard } from './Review.tsx'
@@ -486,8 +486,8 @@ function LeftRail({ sid, root, reacts, drafted }: { sid: string; root: React.Ref
         {on.size > 0 && <button className="ack-clear" data-emoji="remove" onClick={() => toggle('remove', p)}><XIcon size={14} /></button>}
         <div className="ack-row">
           {[...new Set([...on, ...topEmoji(8)])].slice(0, Math.max(8, on.size)).map((e) => <button key={e} data-emoji={e} className={on.has(e) ? 'on' : ''} onClick={() => toggle(e, p)}><span>{e}</span></button>)}
-          <button className="more-emoji" data-emoji="+" onClick={() => toggle('+', p)}>+</button>
-          <button className="more-emoji" data-emoji="comment" onClick={() => toggle('comment', p)}><CommentIcon size={17} /></button>
+          <button className="more-emoji" data-emoji="+" onClick={() => toggle('+', p)}><span><PlusIcon size={17} /></span></button>
+          <button className="more-emoji" data-emoji="comment" onClick={() => toggle('comment', p)}><span><CommentIcon size={17} /></span></button>
         </div>
         </div>, document.body,
       )}

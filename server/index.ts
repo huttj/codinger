@@ -21,6 +21,7 @@ import { findHistory, importTranscript, lastCache, listDirs, listHistory } from 
 import { LEAD_PROMPT, WORKER_PROMPT, lookPrompt, workerNotesPrompt } from './prompts.ts'
 import { LOOK_OPTIONS, LOOK_SLOTS, cleanLook, describeLook } from '../shared/looks.ts'
 import { cleanAppearance } from '../shared/appearance.ts'
+import { bumpEmoji, cleanEmojiUse } from '../shared/emoji.ts'
 import * as meter from './meter.ts'
 import * as costs from './costs.ts'
 import * as usageLedger from './usage.ts'
@@ -36,7 +37,8 @@ import { handleMcp, type Tool } from './mcp.ts'
 import { spendSince, spendText } from './spend.ts'
 import { backfillSubagentSpend } from './subspend.ts'
 import { ESTIMATE_TOOLS, backfillActive, estimateTools, estimatesPrompt, estimatesReply } from './estimates.ts'
-import { answered, askTools, forgetAsks, startAsks } from './asks.ts'
+import { answered, askTools, asksReply, cancelAsk, forgetAsks, startAsks } from './asks.ts'
+import { forgetIcon, setIcon } from './icons.ts'
 import { MAIL_TOOLS, flushMail, mailTools, release, startMail, stepped, takeMail, turnEnded, userWrote } from './mail.ts'
 import { AUTOPILOT_MODES, amount, nudge, startAutopilot, usedOf, verdict } from './autopilot.ts'
 import { blame, initFileHistory, moveHistory, noteEdit, record as recordVersion, versions } from './filehistory.ts'
@@ -211,6 +213,8 @@ function notifyOnChange(s: Session) {
   if (m.kind !== 'worker' || was !== 'working' || !NOTIFY[status]) return
   setTimeout(() => {
     if (m.status !== status) return
+    // A page that shows the session marked the turn seen: 'asking' stays while asks are open.
+    if (status !== 'permission' && !m.unread) return
     remoteNotify({ title: m.title, body: pushBody(s.getEvents(), status) ?? NOTIFY[status], session: m.id })
   }, 2000).unref()
 }
@@ -1191,6 +1195,11 @@ async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL
       ...(body.plan && Number.isFinite(body.plan.usd) && body.plan.usd >= 0 ? { plan: { tier: String(body.plan.tier ?? ''), usd: body.plan.usd, ...(body.plan.yearly ? { yearly: true } : {}) } } : {}),
       ...(body.reviewSeen ? { reviewSeen: { ...settings.reviewSeen, ...Object.fromEntries(['week', 'month'].filter((k) => typeof body.reviewSeen[k] === 'string').map((k) => [k, body.reviewSeen[k]])) } } : {}),
     }
+    // A reaction: one more use of that emoji. The first one also brings what the browser counted before.
+    if (typeof body.emojiUsed === 'string' && body.emojiUsed.length <= 32) {
+      const before = settings.emoji ?? cleanEmojiUse(body.emojiSeed)
+      settings = { ...settings, emoji: bumpEmoji(before, body.emojiUsed) }
+    }
     saveSettings(settings)
     broadcast({ type: 'settings', settings })
     if (body.autoUpdate) updateModeChanged()
@@ -1247,6 +1256,13 @@ async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL
   // Your plan, and day-by-day spend at API prices, for the cost view (shared/costs.ts).
   if (a === 'costs' && method === 'GET') return send(res, 200, await costs.reply())
   // Estimates in agent time and dollars, next to what the work took (server/estimates.ts).
+  if (a === 'asks') {
+    if (!id && method === 'GET') return send(res, 200, asksReply((sid) => sessions.get(sid)?.meta.title))
+    if (id && method === 'DELETE') {
+      if (!cancelAsk(id)) throw new HttpError(404, 'No such ask')
+      return send(res, 200, { ok: true })
+    }
+  }
   if (a === 'estimates' && method === 'GET') return send(res, 200, estimatesReply((sid) => sessions.get(sid)?.meta.title))
   // Tokens and spend by conversation and folder, from Codinger's copy of the transcripts (shared/usage.ts).
   if (a === 'usage' && method === 'GET') {
@@ -1435,6 +1451,7 @@ async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL
     s.stop()
     sessions.delete(id)
     forgetAsks(id)
+    forgetIcon(id)
     deleteEvents(id)
     metaChanged()
     return send(res, 200, { ok: true })
@@ -1608,6 +1625,10 @@ async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL
       s.meta.share = await publishShare(s.meta, s.getEvents(), settings, shareOpts(body))
       metaChanged()
       return send(res, 200, s.meta)
+    // The session's critter as a PNG, for its push notifications (web/src/critterIcon.tsx).
+    case 'icon':
+      if (!setIcon(s.meta.id, String(body.png ?? ''))) throw new HttpError(400, 'A PNG data URL of at most 2600 characters')
+      return send(res, 200, { ok: true })
     case 'seen': s.markSeen(); return send(res, 200, { ok: true })
     case 'unread': s.markUnread(); return send(res, 200, { ok: true })
     case 'permission':
