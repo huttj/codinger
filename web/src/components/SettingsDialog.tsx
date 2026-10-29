@@ -22,7 +22,7 @@ import { KEEP_WARM } from '../../../shared/notes.ts'
 import { disablePush, enablePush, pushSubscribed, pushSupported } from '../push.ts'
 
 const GUARDS = [0, 20_000, 50_000, 100_000, 250_000, 500_000]
-const WARM_HOURS = [0, 1, 2, 4, 6, 8, 12]
+const WARM_HOURS = [0, 1, 2, 4, 6, 8, 12, 16, 24]
 const WARM_MAX = [200_000, 300_000, 500_000, 750_000, 1_000_000]
 const WARM_USAGE = [50, 70, 80, 90, 100]
 const PAGES = [['general', 'General'], ['cost', 'Plan and cost'], ['estimates', 'Estimates'], ['appearance', 'Appearance'], ['context', 'Start-up context'], ['files', 'Notes files'], ['remote', 'Remote access']] as const
@@ -108,74 +108,86 @@ export function SettingsDialog({ onClose }: { onClose(): void }) {
             {PAGES.map(([p, label]) => <button key={p} className={page === p ? 'on' : ''} onClick={() => go(p)}>{label}</button>)}
           </nav>
           {page === 'general' && <section className="settings-page">
-            <PushSetting />
-            <label className="settings-check">
-              <input type="checkbox" checked={st.showSteps} onChange={(e) => { state.showSteps = e.target.checked; changed() }} />
-              Show Claude's in-between messages
-            </label>
-            {/* Only a touch screen has it; it is saved in this browser. */}
-            {matchMedia('(pointer: coarse)').matches && <label className="settings-check">
-              <input type="checkbox" checked={st.touchPick} onChange={(e) => { state.touchPick = e.target.checked; changed() }} />
-              While the keyboard is open, hold a finger on message text to pick it for a comment
-            </label>}
-            <label className="settings-check">
-              Updates from GitHub
-              <select value={st.settings.autoUpdate ?? 'ask'} onChange={(e) => void api('/api/settings', 'PUT', { autoUpdate: e.target.value })}>
-                <option value="ask">Ask first</option>
-                <option value="always">Install automatically</option>
-                <option value="never">Never</option>
-              </select>
-            </label>
-            <label className="settings-check" title="For work on Codinger itself: a banner offers a server restart">
-              <input type="checkbox" checked={!!st.settings.selfRestart} onChange={(e) => void api('/api/settings', 'PUT', { selfRestart: e.target.checked })} />
-              Offer to restart when Codinger's code changes
-            </label>
-            <label className="settings-check" title="After a crash or a forced stop of the server. A restart from Codinger keeps a working session working anyway.">
-              <input type="checkbox" checked={!!st.settings.resumeCut} onChange={(e) => void api('/api/settings', 'PUT', { resumeCut: e.target.checked })} />
-              Go on with turns that a server stop cut short
-            </label>
-            <label className="settings-check" title="When the prompt cache expires, the next message re-caches the whole context at full price">
-              Ask before re-caching more than
-              <select value={guard} onChange={(e) => void api('/api/settings', 'PUT', { cacheGuard: Number(e.target.value) })}>
-                {[...new Set([...GUARDS, guard])].sort((x, y) => x - y).map((g) => <option key={g} value={g}>{g ? `${g / 1000}k tokens` : 'never ask'}</option>)}
-              </select>
-            </label>
-            <label className="settings-check" data-tip="New sessions get only Codinger's tools, also when a server is on for every new session in the MCP dialog. The MCP chip or Claude turns servers on. When this is off, new sessions start with the servers on for every new session. Current sessions do not change.">
-              <input type="checkbox" checked={st.settings.mcpStartOff !== false} onChange={(e) => void api('/api/settings', 'PUT', { mcpStartOff: e.target.checked })} />
-              Start new sessions with my MCP servers off
-            </label>
-            <label className="settings-check" data-tip="When off, Claude asks you first. Applies to new sessions only.">
-              <input type="checkbox" checked={st.settings.mcpClaude !== false} onChange={(e) => void api('/api/settings', 'PUT', { mcpClaude: e.target.checked })} />
-              Let Claude turn on an MCP server when the task needs it
-            </label>
-            <label className="settings-check" title="After 20 idle minutes, a call writes notes to the folder's .codinger/notes/, to start a new session from">
-              <input type="checkbox" checked={st.settings.notes !== false} onChange={(e) => void api('/api/settings', 'PUT', { notes: e.target.checked })} />
-              Write notes on quiet sessions
-            </label>
-            <label className="settings-check" data-tip="Claude may estimate work in agent time and dollars, and saves each estimate with what the work took. Applies when a session starts again.">
-              <input type="checkbox" checked={st.settings.estimates !== false} onChange={(e) => void api('/api/settings', 'PUT', { estimates: e.target.checked })} />
-              Estimates in agent time and cost, measured against the work
-            </label>
-            <label className="settings-check" title="A short call keeps the 1-hour cache warm at the cache-read price. A later message then does not re-cache it all">
-              Keep the cache warm for
-              <select value={st.settings.keepWarmHours ?? KEEP_WARM.hours} onChange={(e) => void api('/api/settings', 'PUT', { keepWarmHours: Number(e.target.value) })}>
-                {[...new Set([...WARM_HOURS, st.settings.keepWarmHours ?? KEEP_WARM.hours])].sort((x, y) => x - y).map((h) => <option key={h} value={h}>{h ? `${h} ${h === 1 ? 'hour' : 'hours'}` : 'no time (off)'}</option>)}
-              </select>
-              after the last activity
-            </label>
-            <label className="settings-check" title="A large context is slow and costly even with a warm cache. The Notes chip turns amber past this size">
-              Suggest a new session from the notes past
-              <select value={st.settings.keepWarmMax ?? KEEP_WARM.max} onChange={(e) => void api('/api/settings', 'PUT', { keepWarmMax: Number(e.target.value) })}>
-                {[...new Set([...WARM_MAX, st.settings.keepWarmMax ?? KEEP_WARM.max])].sort((x, y) => x - y).map((t) => <option key={t} value={t}>{t / 1000}k tokens</option>)}
-              </select>
-            </label>
-            <label className="settings-check" title="No notes or keep-warm calls that would take your 5-hour usage past this">
-              Stop the calls at
-              <select value={st.settings.keepWarmUsage ?? KEEP_WARM.usage} onChange={(e) => void api('/api/settings', 'PUT', { keepWarmUsage: Number(e.target.value) })}>
-                {[...new Set([...WARM_USAGE, st.settings.keepWarmUsage ?? KEEP_WARM.usage])].sort((x, y) => x - y).map((u) => <option key={u} value={u}>{u === 100 ? 'never' : `${u}%`}</option>)}
-              </select>
-              of the 5-hour limit
-            </label>
+            <div className="settings-group">
+              <h3 className="cost-h">Notifications and messages</h3>
+              <PushSetting />
+              <label className="settings-check">
+                <input type="checkbox" checked={st.showSteps} onChange={(e) => { state.showSteps = e.target.checked; changed() }} />
+                Show Claude's in-between messages
+              </label>
+              {/* Only a touch screen has it; it is saved in this browser. */}
+              {matchMedia('(pointer: coarse)').matches && <label className="settings-check">
+                <input type="checkbox" checked={st.touchPick} onChange={(e) => { state.touchPick = e.target.checked; changed() }} />
+                While the keyboard is open, hold a finger on message text to pick it for a comment
+              </label>}
+            </div>
+            <div className="settings-group">
+              <h3 className="cost-h">New sessions</h3>
+              <label className="settings-check" data-tip="New sessions get only Codinger's tools, also when a server is on for every new session in the MCP dialog. The MCP chip or Claude turns servers on. When this is off, new sessions start with the servers on for every new session. Current sessions do not change.">
+                <input type="checkbox" checked={st.settings.mcpStartOff !== false} onChange={(e) => void api('/api/settings', 'PUT', { mcpStartOff: e.target.checked })} />
+                Start new sessions with my MCP servers off
+              </label>
+              <label className="settings-check" data-tip="When off, Claude asks you first. Applies to new sessions only.">
+                <input type="checkbox" checked={st.settings.mcpClaude !== false} onChange={(e) => void api('/api/settings', 'PUT', { mcpClaude: e.target.checked })} />
+                Let Claude turn on an MCP server when the task needs it
+              </label>
+              <label className="settings-check" data-tip="Claude may estimate work in agent time and dollars, and saves each estimate with what the work took. Applies when a session starts again.">
+                <input type="checkbox" checked={st.settings.estimates !== false} onChange={(e) => void api('/api/settings', 'PUT', { estimates: e.target.checked })} />
+                Estimates in agent time and cost, measured against the work
+              </label>
+            </div>
+            <div className="settings-group">
+              <h3 className="cost-h">Prompt cache and notes</h3>
+              <label className="settings-check" title="When the prompt cache expires, the next message re-caches the whole context at full price">
+                Ask before re-caching more than
+                <select value={guard} onChange={(e) => void api('/api/settings', 'PUT', { cacheGuard: Number(e.target.value) })}>
+                  {[...new Set([...GUARDS, guard])].sort((x, y) => x - y).map((g) => <option key={g} value={g}>{g ? `${g / 1000}k tokens` : 'never ask'}</option>)}
+                </select>
+              </label>
+              <label className="settings-check" title="A short call keeps the 1-hour cache warm at the cache-read price. A later message then does not re-cache it all">
+                Keep the cache warm for
+                <select value={st.settings.keepWarmHours ?? KEEP_WARM.hours} onChange={(e) => void api('/api/settings', 'PUT', { keepWarmHours: Number(e.target.value) })}>
+                  {[...new Set([...WARM_HOURS, st.settings.keepWarmHours ?? KEEP_WARM.hours])].sort((x, y) => x - y).map((h) => <option key={h} value={h}>{h ? `${h} ${h === 1 ? 'hour' : 'hours'}` : 'no time (off)'}</option>)}
+                </select>
+                after the last activity
+              </label>
+              <label className="settings-check" title="After 20 idle minutes, a call writes notes to the folder's .codinger/notes/, to start a new session from">
+                <input type="checkbox" checked={st.settings.notes !== false} onChange={(e) => void api('/api/settings', 'PUT', { notes: e.target.checked })} />
+                Write notes on quiet sessions
+              </label>
+              <label className="settings-check" title="No notes or keep-warm calls that would take your 5-hour usage past this">
+                Stop notes and keep-warm calls at
+                <select value={st.settings.keepWarmUsage ?? KEEP_WARM.usage} onChange={(e) => void api('/api/settings', 'PUT', { keepWarmUsage: Number(e.target.value) })}>
+                  {[...new Set([...WARM_USAGE, st.settings.keepWarmUsage ?? KEEP_WARM.usage])].sort((x, y) => x - y).map((u) => <option key={u} value={u}>{u === 100 ? 'never' : `${u}%`}</option>)}
+                </select>
+                of the 5-hour limit
+              </label>
+              <label className="settings-check" title="A large context is slow and costly even with a warm cache. The Notes chip turns amber past this size">
+                Suggest a new session from the notes past
+                <select value={st.settings.keepWarmMax ?? KEEP_WARM.max} onChange={(e) => void api('/api/settings', 'PUT', { keepWarmMax: Number(e.target.value) })}>
+                  {[...new Set([...WARM_MAX, st.settings.keepWarmMax ?? KEEP_WARM.max])].sort((x, y) => x - y).map((t) => <option key={t} value={t}>{t / 1000}k tokens</option>)}
+                </select>
+              </label>
+            </div>
+            <div className="settings-group">
+              <h3 className="cost-h">Updates and restarts</h3>
+              <label className="settings-check">
+                Updates from GitHub
+                <select value={st.settings.autoUpdate ?? 'ask'} onChange={(e) => void api('/api/settings', 'PUT', { autoUpdate: e.target.value })}>
+                  <option value="ask">Ask first</option>
+                  <option value="always">Install automatically</option>
+                  <option value="never">Never</option>
+                </select>
+              </label>
+              <label className="settings-check" title="For work on Codinger itself: a banner offers a server restart">
+                <input type="checkbox" checked={!!st.settings.selfRestart} onChange={(e) => void api('/api/settings', 'PUT', { selfRestart: e.target.checked })} />
+                Offer to restart when Codinger's code changes
+              </label>
+              <label className="settings-check" title="After a crash or a forced stop of the server. A restart from Codinger keeps a working session working anyway.">
+                <input type="checkbox" checked={!!st.settings.resumeCut} onChange={(e) => void api('/api/settings', 'PUT', { resumeCut: e.target.checked })} />
+                Go on with turns that a server stop cut short
+              </label>
+            </div>
           </section>}
           {page === 'cost' && <section className="settings-page"><CostPanel /></section>}
           {page === 'estimates' && <section className="settings-page"><EstimatesPanel onClose={onClose} /></section>}

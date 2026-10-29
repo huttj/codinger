@@ -1106,6 +1106,8 @@ label > input[type="checkbox"] { flex: none; margin: 0; }
 /* It scrolls at the edge of the dialog; its text keeps a short line. */
 .settings-page > * { max-width: 640px; } .settings-page > .usage-audit { max-width: 860px; }
 .settings-page .settings-check { flex-direction: row; margin: 0; color: var(--text); }
+/* The General page in sections: a heading, then its settings. */
+.settings-group { display: flex; flex-direction: column; gap: 10px; } .settings-group + .settings-group { margin-top: 10px; } .settings-group > .cost-h { margin: 0; }
 .settings-page .settings-check select { padding: 2px 6px; font-size: calc(12.5px * var(--fs, 1)); }
 .files-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 240px 1fr; gap: 14px; }
 .files-list { overflow-y: auto; display: flex; flex-direction: column; gap: 2px; border-right: 1px solid var(--line); padding-right: 10px; }
