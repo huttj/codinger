@@ -145,6 +145,7 @@ body.resizing-v .splitter-v::after { background: var(--accent); }
 .row.alert { box-shadow: inset 3px 0 0 var(--bad); }
 .row.error .row-sub { color: var(--bad); }
 .count.critical { background: var(--bad); }
+.count.held { background: var(--warn); }
 .row-main { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .row-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .row-sub { font-size: calc(11.5px * var(--fs, 1)); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1029,6 +1030,9 @@ mark.hl-purple { --hl: #8e4ec6; }
 .inbox { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
 .inbox-item { border: 1px solid var(--blue); border-radius: 10px; padding: 8px 10px; background: rgba(76, 141, 255, .06); }
 .inbox-from { font-size: calc(11.5px * var(--fs, 1)); color: var(--blue); font-weight: 600; }
+.inbox-item.archive-ask { border-color: var(--warn); background: rgba(212, 167, 44, .12); }
+.archive-ask .inbox-from { color: var(--warn); display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.archive-ask .mail-text { margin-top: 4px; }
 .inbox-head { display: flex; align-items: center; gap: 8px; }
 .inbox-on { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(12.5px * var(--fs, 1)); color: var(--muted); }
 .inbox-choices { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }

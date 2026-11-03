@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { SessionGroup, SessionMeta, Usage } from '../../../shared/types.ts'
-import { api, changed, closeSession, showArchive, currentMachine, LOCAL, localId, machineList, machineOf, offline, select, state, useStore, type Machine, labelOf } from '../store.ts'
+import { api, archiveAsksOf, changed, closeSession, showArchive, currentMachine, LOCAL, localId, machineList, machineOf, offline, select, state, useStore, type Machine, labelOf } from '../store.ts'
 import { HistoryDialog } from './HistoryDialog.tsx'
 import { fatigue, timeAgo } from '../util.ts'
 import { Mascot, STATUS_LABEL } from './Mascot.tsx'
@@ -619,7 +619,9 @@ const nameOf = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?? pa
 
 // A row names its folder, not its status: the critter shows the status. In a folder section the head names the folder.
 function Row({ s, depth = 0, active, label, folder = true, onPointerDown, onMenu }: { s: SessionMeta; depth?: number; active: boolean; label?: string; folder?: boolean; onPointerDown?(e: React.PointerEvent): void; onMenu?(e: React.MouseEvent, items: MenuItem[]): void }) {
-  const parent = useStore().sessions.find((x) => x.id === s.parentId)
+  const { sessions } = useStore()
+  const parent = sessions.find((x) => x.id === s.parentId)
+  const asks = archiveAsksOf(sessions, s.id).length
   return (
     <button className={`row${active ? ' active' : ''}${s.unread ? ' unread' : ''}${alertOf(s) ? ' alert' : ''}${s.status === 'error' ? ' error' : ''}`} style={{ paddingLeft: 10 + depth * 16 }} onClick={() => select(s.id)} onPointerDown={onPointerDown} onContextMenu={onMenu && ((e) => onMenu(e, rowItems(s)))}>
       <Mascot status={s.status} look={s.look} fatigue={fatigue(s.context.used, s.context.window)} size={26} title={STATUS_LABEL[s.status]} child={!!s.parentId} review={!!s.pendingReviews} starred={s.starred} />
@@ -628,6 +630,7 @@ function Row({ s, depth = 0, active, label, folder = true, onPointerDown, onMenu
         <span className="row-sub">{[s.compacting && 'compacting', folder && nameOf(s.cwd), timeAgo(s.lastActivity)].filter(Boolean).join(' · ')}<SpendHint s={s} /><CacheHint s={s} /></span>
       </span>
       {!!s.pendingCritical && <span className="count critical" data-tip="Critical items" data-tip-at="right">{s.pendingCritical}</span>}
+      {asks > 0 && <span className="count held" data-tip="Asks to write to an archived session" data-tip-at="right">{asks}</span>}
       {s.inbox.length > 0 && <span className="count" title="Drafts from the lead">{s.inbox.length}</span>}
       {s.kind === 'worker' && !s.archived && (
         <span className="row-close" role="button" title="Archive session" onClick={(e) => { e.stopPropagation(); void closeSession(s.id) }}><XIcon size={12} /></span>

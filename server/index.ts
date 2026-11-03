@@ -349,7 +349,7 @@ function resumeCut(s: Session) {
 }
 startNotes({ sessions: () => sessions.values(), settings: () => settings, usage: () => usage, changed: metaChanged })
 startTasks({ changed: (tasks) => broadcast({ type: 'tasks', tasks }), ended: taskEnded })
-startMail({ sessions, create: createSession, hidden: hiddenFor, changed: metaChanged })
+startMail({ sessions, create: createSession, hidden: hiddenFor, changed: metaChanged, push: remoteNotify })
 startAsks({
   session: (id) => { const s = sessions.get(id); return s && s.meta.kind === 'worker' ? { title: s.meta.title } : undefined },
   push: remoteNotify,
@@ -1541,9 +1541,10 @@ async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL
       userWrote(s)
       return send(res, 200, { ok: true })
     }
-    // Your OK for a message another session sent, held past the limit; or send: false to drop it.
+    // Your OK for a message another session sent, held past the limit or to an archived session;
+    // or send: false to drop it. note: your words to the sender of a message to an archived session.
     case 'mail':
-      try { release(s, String(c), body.send !== false) } catch (e) { throw new HttpError(404, (e as Error).message) }
+      try { release(s, String(c), body.send !== false, String(body.note ?? '')) } catch (e) { throw new HttpError(404, (e as Error).message) }
       return send(res, 200, { ok: true })
     case 'drafting':
       if (s.meta.drafting !== !!body.on) { s.meta.drafting = !!body.on; metaChanged() }

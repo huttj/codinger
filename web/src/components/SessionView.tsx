@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { Mail, PermissionMode, SessionMeta, SlashCommand } from '../../../shared/types.ts'
 import { MAX_RUN } from '../../../shared/mail.ts'
-import { api, changed, closeSession, composerOf, draftsOf, hasContent, loadEvents, queuedParts, select, sendQueued, setComposer, state, undismissItem, useStore, deselect, globalId, machineOf, localId, quietly, panelOf, setPanel, type PanelTab } from '../store.ts'
+import { api, archiveAsksOf, changed, closeSession, composerOf, draftsOf, hasContent, loadEvents, queuedParts, select, sendQueued, setComposer, state, undismissItem, useStore, deselect, globalId, machineOf, localId, quietly, panelOf, setPanel, type PanelTab } from '../store.ts'
 import { fatigue, kTokens } from '../util.ts'
 import { Mascot, STATUS_LABEL } from './Mascot.tsx'
 import { dragToGroup } from './Sidebar.tsx'
@@ -362,6 +362,31 @@ function Inbox({ m }: { m: SessionMeta }) {
   )
 }
 
+// A message this session wants to send to an archived session. A yes takes that session out of
+// the archive; a no tells this session that the message did not go.
+function ArchiveAsk({ to, x }: { to: SessionMeta; x: Mail }) {
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const answer = async (send: boolean) => {
+    setBusy(true)
+    try { await api(`/api/sessions/${to.id}/mail/${x.id}`, 'POST', { send, note }) } finally { setBusy(false) }
+  }
+  return (
+    <div className="inbox-item archive-ask" data-pid="archive-ask">
+      <div className="inbox-head">
+        <span className="inbox-from"><MailIcon size={12} /> Asks to write to {to.archived ? 'an archived session' : 'a session'}</span>
+        <button className="link inbox-on" onClick={() => select(to.id)}>{to.title}</button>
+      </div>
+      <div className="mail-text">{x.text}</div>
+      <div className="perm-actions">
+        <button className="primary" disabled={busy} onClick={() => answer(true)}>Send</button>
+        <input placeholder="Note to this session" value={note} onChange={(e) => setNote(e.target.value)} />
+        <button className="danger" disabled={busy} onClick={() => answer(false)}>Do not send</button>
+      </div>
+    </div>
+  )
+}
+
 // Messages from other sessions that wait: for the end of this turn, or, past the limit, for your OK.
 // Each is a pill in the queue row; a click opens the message above it.
 function Mailbox({ m }: { m: SessionMeta }) {
@@ -392,7 +417,7 @@ function Mailbox({ m }: { m: SessionMeta }) {
           <div className="inbox-head">
             <span className="inbox-from"><MailIcon size={12} /> {x.idle ? `${name(x)} is idle` : x.replyTo ? `Reply from ${name(x)}` : `From ${name(x)}`}</span>
             <span className="inbox-on">
-              {x.held ? `Waits for your OK: ${name(x)} sent ${MAX_RUN} messages in a row here, and you wrote in neither session since.` : x.step ? `Goes in when ${name(x)} goes on or ends its turn` : 'Goes in when this turn ends'}
+              {x.reopens ? `Waits for your OK: ${name(x)} asks to take this session out of the archive with this message.` : x.held ? `Waits for your OK: ${name(x)} sent ${MAX_RUN} messages in a row here, and you wrote in neither session since.` : x.step ? `Goes in when ${name(x)} goes on or ends its turn` : 'Goes in when this turn ends'}
             </span>
             {x.held && <button className="link" onClick={() => act(x.id, true)}>Send</button>}
             <button className="icon-btn" title="Discard the message" onClick={() => act(x.id, false)}><XIcon size={13} /></button>
@@ -468,7 +493,8 @@ function DismissedChip({ sid }: { sid: string }) {
 const resolve = (n: number) => <>Resolve {n}<span className="not-phone not-narrow"> {n === 1 ? 'issue' : 'issues'}</span> ↑</>
 
 export function Composer({ m, attachRef }: { m: SessionMeta; attachRef?: React.RefObject<((files: File[]) => void) | null> }) {
-  useStore()
+  const { sessions } = useStore()
+  const asks = archiveAsksOf(sessions, m.id)
   const c = composerOf(m.id)
   const drafts = draftsOf(m.id).filter(hasContent)
   const reactions = drafts.filter((d) => (d.kind === 'note' || d.kind === 'artifact') && isReaction(d.text) && !d.images.length).length
@@ -512,6 +538,7 @@ export function Composer({ m, attachRef }: { m: SessionMeta; attachRef?: React.R
   return (
     <div className="composer">
       <RunningTasks sid={m.id} />
+      {asks.length > 0 && <div className="inbox">{asks.map(({ to, mail }) => <ArchiveAsk key={mail.id} to={to} x={mail} />)}</div>}
       <Inbox m={m} />
       {(!!m.mail?.length || notes > 0 || verdicts > 0 || reactions > 0 || answers > 0 || dismissed > 0 || done > 0 || open.length > 0) && (
         <div className="queue">

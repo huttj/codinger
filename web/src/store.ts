@@ -175,6 +175,9 @@ export const localId = (id: string) => id.includes(SEP) ? id.slice(id.indexOf(SE
 export const globalId = (machine: string, id: string) => machine ? `${machine}${SEP}${id}` : id
 // A session id that a server sent (in a message, a task, a tool call): on the current machine.
 export const here = (id: string) => globalId(currentMachine(), id)
+// The messages a session wants to send to archived sessions: each waits for your yes or no.
+export const archiveAsksOf = (sessions: SessionMeta[], id: string) =>
+  sessions.flatMap((to) => (to.mail ?? []).filter((x) => x.reopens && globalId(machineOf(to.id), x.from) === id).map((mail) => ({ to, mail })))
 
 const blank = (name: string): Machine => ({ name, connected: false, loaded: false, sessions: [], settings: { leadAutoSend: false }, usage: {}, tasks: [], platform: '', home: '', auth: { state: 'ok' }, stale: false })
 

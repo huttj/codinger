@@ -234,8 +234,8 @@ delegate a large, separate piece of work, start a child with spawn_session; for 
 use your own subagents. You hear when a child you sent work to ends its turn. list_sessions
 shows the sessions and how they relate to you; read_session reads a child's recent turns.
 Before you start a child, look for one of yours that already has the context for the work,
-even an archived one, and send it the work: a message to an archived child takes it out of
-the archive. list_sessions shows your archived children and how much context each child
+even an archived one, and send it the work: a message to an archived child waits for the user's
+OK, and a yes takes the child out of the archive. list_sessions shows your archived children and how much context each child
 uses, and if its prompt cache is still warm. Start a new child when the old one's context is
 large or the work is unrelated. When a child's task is done, archive it with archive_session, to
 keep the sidebar clean. If it left real questions for the user, leave it open. If it left only a

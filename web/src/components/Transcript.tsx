@@ -752,7 +752,8 @@ function MailHead({ p }: { p: Extract<Part, { kind: 'mail' }> }) {
   return (
     <div className="mail-head">
       <MailIcon size={12} />
-      {p.idle ? <span>{who} ended its turn and is idle</span>
+      {p.decided ? <span>Your answer about a message to {who}</span>
+        : p.idle ? <span>{who} ended its turn and is idle</span>
         : <span>{p.replyTo ? 'Reply from' : 'From'} {who}{p.relation && <span className="muted"> ({p.relation === 'parent' ? 'its parent' : 'its child'})</span>}{p.endTurn && <span className="muted"> · then ended its turn</span>}</span>}
       {p.replyTo && <div className="sent-quote mail-quote">{p.replyTo.text}</div>}
     </div>

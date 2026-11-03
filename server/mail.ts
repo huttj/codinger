@@ -1,8 +1,8 @@
 // Sessions that work together: a worker can start child sessions, see the other sessions,
 // and send them messages. A message goes in at once, or when the receiver's turn ends.
 // A parent and its children may always write to each other; other sessions too, unless the
-// receiver narrowed its inbox with set_inbox. A parent can archive its children. A parent's message to its archived child takes the child out of
-// the archive, so a parent can reuse a child that has the context. A child's parent hears
+// receiver narrowed its inbox with set_inbox. A parent can archive its children. A parent's message to its archived child waits for your yes or no:
+// a yes takes the child out of the archive, so a parent can reuse a child that has the context. A child's parent hears
 // when the child goes idle after work the parent sent it. A child's message to its parent waits for the child's next tool call: if
 // its turn ends first, the parent gets one message that says so, and no separate idle note. Past MAX_RUN messages in a row from one sender, with no word from you in
 // either session, a message waits for your OK.
@@ -22,6 +22,7 @@ type Ctx = {
   create(o: { cwd: string; title: string; model?: string | null; permissionMode: PermissionMode; parentId: string }): Session
   hidden(s: Session, parts: Part[]): { hidden?: string; tasks?: string[] }
   changed(): void
+  push(n: { title: string; body: string; session: string }): Promise<string | null>
 }
 let ctx: Ctx
 
@@ -45,6 +46,8 @@ const busy = (m: SessionMeta) => m.status === 'working' || m.status === 'permiss
 const metaOf = (id: string | null | undefined) => id ? ctx.sessions.get(id)?.meta : undefined
 const workers = () => [...ctx.sessions.values()].map((s) => s.meta).filter((m) => m.kind === 'worker')
 const childrenOf = (id: string) => workers().filter((m) => m.parentId === id)
+// Codinger's own words, not a message that a session wrote.
+const isNote = (m: Pick<Mail, 'idle' | 'decided'>) => !!(m.idle || m.decided)
 
 // What b is to a.
 function relation(a: SessionMeta, b: SessionMeta): 'parent' | 'child' | null {
@@ -73,7 +76,7 @@ function session(id: unknown): Session {
 function refusal(from: SessionMeta, to: SessionMeta, reply = false): string | null {
   if (to.id === from.id) return 'That is your own session.'
   if (to.archived) {
-    if (relation(from, to) !== 'child') return `"${to.title}" is archived. Only its parent can take it out of the archive.`
+    if (relation(from, to) !== 'child') return `"${to.title}" is archived. Only its parent can send it a message, with the user's OK.`
     if (childrenOf(from.id).filter((c) => !c.archived).length >= MAX_CHILDREN) return `"${to.title}" is archived, and you have ${MAX_CHILDREN} children that are not archived, the most there can be. Ask the user to archive the ones that are done.`
     return null
   }
@@ -86,10 +89,12 @@ function refusal(from: SessionMeta, to: SessionMeta, reply = false): string | nu
 
 function post(to: Session, m: Omit<Mail, 'id' | 'ts'>): Mail {
   const mail: Mail = { ...m, id: `m${randomUUID().slice(0, 7)}`, ts: Date.now() }
-  // A parent's message reopens its archived child (refusal() checked the limit).
-  if (to.meta.archived && to.meta.parentId === m.from) to.meta.archived = false
-  if (!m.idle && (to.meta.mailRun?.[m.from] ?? 0) >= MAX_RUN) mail.held = true
-  if (!m.idle && metaOf(m.from)?.parentId === to.meta.id) mail.step = true
+  // A message to an archived session waits for your yes or no, in the sender's session too.
+  if (to.meta.archived && !isNote(m)) {
+    mail.held = mail.reopens = true
+    void ctx.push({ title: m.title, body: `Asks to write to archived "${excerpt(to.meta.title, 40)}": ${excerpt(m.text, 90)}`, session: m.from })
+  } else if (!isNote(m) && (to.meta.mailRun?.[m.from] ?? 0) >= MAX_RUN) mail.held = true
+  if (!isNote(m) && metaOf(m.from)?.parentId === to.meta.id) mail.step = true
   to.meta.mail = [...to.meta.mail ?? [], mail]
   ctx.changed()
   flushMail(to)
@@ -103,11 +108,11 @@ function cacheOf(m: SessionMeta): string {
   return left == null ? 'empty' : left > 0 ? `warm for ${Math.ceil(left / 60_000)} more min` : 'expired'
 }
 
-// reopened: the message took it out of the archive.
-function sent(to: Session, m: Mail, reopened = false): string {
+function sent(to: Session, m: Mail): string {
   const t = `"${to.meta.title}"`
-  return (reopened ? `Took ${t} out of the archive: it resumes with its whole context. ` : '') + (
-    m.held ? `Held for the user's OK as \`${m.id}\`: ${t} got ${MAX_RUN} messages in a row from you, and the user wrote in neither session since. Ask the user to press Send on it in ${t}.`
+  return (
+    m.reopens ? `Held for the user's OK as \`${m.id}\`: ${t} is archived. The user sees your message in your session and says yes or no. Do not send it again, and do not wait for the answer: go on with other work. After a yes, ${t} leaves the archive with its whole context and gets the message, and you hear from it as usual. After a no, you get a message that says so.`
+    : m.held ? `Held for the user's OK as \`${m.id}\`: ${t} got ${MAX_RUN} messages in a row from you, and the user wrote in neither session since. Ask the user to press Send on it in ${t}.`
     : m.step ? `Sent to ${t} as \`${m.id}\`. It goes in at your next tool call, or when your turn ends: then it also tells ${t} that you are idle.`
     : to.meta.pendingCritical && to.meta.mail?.some((x) => x.id === m.id) ? `Waiting as \`${m.id}\`: ${t} has an item marked critical open for the user. Nothing goes in before the user's next message there; yours goes in with it. This is the only delivery there is until then.`
     : to.meta.mail?.some((x) => x.id === m.id) ? `Queued as \`${m.id}\`: ${t} is in the middle of a turn, and gets it when the turn ends.`
@@ -128,13 +133,13 @@ export function takeMail(s: Session): Part[] {
   if (!ready.length) return []
   s.meta.mail = s.meta.mail!.filter((m) => m.held || m.step)
   const run = { ...s.meta.mailRun }
-  for (const m of ready) if (!m.idle) run[m.from] = (run[m.from] ?? 0) + 1
+  for (const m of ready) if (!isNote(m)) run[m.from] = (run[m.from] ?? 0) + 1
   s.meta.mailRun = run
-  if (ready.some((m) => !m.idle && m.from === s.meta.parentId)) s.meta.parentWaits = true
+  if (ready.some((m) => !isNote(m) && m.from === s.meta.parentId)) s.meta.parentWaits = true
   const parts: Part[] = ready.map((m) => {
     const f = metaOf(m.from)
     const rel = f && relation(s.meta, f)
-    return { kind: 'mail', text: m.text, id: m.id, from: m.from, title: f?.title ?? m.title, ...(rel ? { relation: rel } : {}), ...(m.replyTo ? { replyTo: m.replyTo } : {}), ...(m.idle ? { idle: true } : {}), ...(m.endTurn ? { endTurn: true } : {}) }
+    return { kind: 'mail', text: m.text, id: m.id, from: m.from, title: f?.title ?? m.title, ...(rel ? { relation: rel } : {}), ...(m.replyTo ? { replyTo: m.replyTo } : {}), ...(m.idle ? { idle: true } : {}), ...(m.decided ? { decided: true } : {}), ...(m.endTurn ? { endTurn: true } : {}) }
   })
   ctx.changed()
   return parts
@@ -187,16 +192,25 @@ export function userWrote(s: Session) {
   if (n) ctx.changed()
 }
 
-// Your OK for a held message (it starts a new run from its sender), or its removal.
-export function release(s: Session, id: string, send: boolean) {
+// Your OK for a held message (it starts a new run from its sender), or its removal. A message
+// to an archived session: a yes takes the session out of the archive. Its sender hears a no, and
+// hears a yes only if you wrote a note: after a yes, it hears from the session as usual.
+export function release(s: Session, id: string, send: boolean, note = '') {
   const m = s.meta.mail?.find((x) => x.id === id)
   if (!m) throw new Error('No such message')
+  const asked = m.reopens
   if (send) {
     m.held = false
+    delete m.reopens
+    if (asked) s.meta.archived = false
     s.meta.mailRun = { ...s.meta.mailRun, [m.from]: 0 }
   } else s.meta.mail = s.meta.mail!.filter((x) => x !== m)
   ctx.changed()
   flushMail(s)
+  const sender = ctx.sessions.get(m.from), words = note.trim()
+  if (!asked || !sender || sender.meta.archived || (send && !words)) return
+  const said = send ? `The user said yes to your message \`${m.id}\` to "${s.meta.title}".` : `The user said no to your message \`${m.id}\` to "${s.meta.title}": it did not go. Do not send it again unless the user asks.`
+  post(sender, { from: s.meta.id, title: s.meta.title, text: words ? `${said} The user's note: ${words}` : said, decided: true })
 }
 
 export function mailTools(id: string): Tool[] {
@@ -243,15 +257,14 @@ export function mailTools(id: string): Tool[] {
     },
     {
       name: 'send_message',
-      description: 'Send a message to another session. It goes in at once if the session is between turns, or when its turn ends. A session with an item marked critical for the user takes nothing before the user\'s next message there: yours goes in with it. Any session takes your messages, unless it closed its inbox with set_inbox (see list_sessions); your parent and your children always do. A message to your archived child takes it out of the archive. To answer a message you got, use reply.',
+      description: 'Send a message to another session. It goes in at once if the session is between turns, or when its turn ends. A session with an item marked critical for the user takes nothing before the user\'s next message there: yours goes in with it. Any session takes your messages, unless it closed its inbox with set_inbox (see list_sessions); your parent and your children always do. A message to your archived child waits for the user\'s OK: after a yes it takes the child out of the archive, and after a no you hear that it did not go. To answer a message you got, use reply.',
       inputSchema: { type: 'object', required: ['to', 'message'], properties: { to: { type: 'string', description: 'The session id' }, message: { type: 'string' } } },
       run: ({ to, message }) => {
         const m = me().meta, s = session(to)
         const why = refusal(m, s.meta)
         if (why) throw new Error(why)
         if (!String(message ?? '').trim()) throw new Error('Give a message')
-        const reopened = s.meta.archived
-        return sent(s, post(s, { from: id, title: m.title, text: String(message) }), reopened)
+        return sent(s, post(s, { from: id, title: m.title, text: String(message) }))
       },
     },
     {
@@ -263,13 +276,12 @@ export function mailTools(id: string): Tool[] {
         let orig: Extract<Part, { kind: 'mail' }> | undefined
         for (const e of me().getEvents()) if (e.t === 'user') for (const p of e.parts) if (p.kind === 'mail' && p.id === mid) orig = p
         if (!orig) throw new Error(`You got no message \`${mid}\`.`)
-        if (orig.idle) throw new Error('That is a note from Codinger. Use send_message to write to the session.')
+        if (isNote(orig)) throw new Error('That is a note from Codinger. Use send_message to write to the session.')
         const m = me().meta, s = session(orig.from)
         const why = refusal(m, s.meta, true)
         if (why) throw new Error(why)
         if (!String(message ?? '').trim()) throw new Error('Give a message')
-        const reopened = s.meta.archived
-        return sent(s, post(s, { from: id, title: m.title, text: String(message), replyTo: { id: mid, text: excerpt(orig.text) } }), reopened)
+        return sent(s, post(s, { from: id, title: m.title, text: String(message), replyTo: { id: mid, text: excerpt(orig.text) } }))
       },
     },
     {
@@ -317,7 +329,7 @@ export function mailTools(id: string): Tool[] {
     },
     {
       name: 'archive_session',
-      description: "Archive one of your children (or their children), as the user does in the sidebar: its process ends, and it keeps its whole context. When a child's task is done, archive it, to keep the sidebar clean. If it left real questions for the user, leave it open. If it left only a routine question (for example \"may I restart?\"), ask the user that question in your own conversation, then archive the child. A message from you takes your archived child out of the archive again.",
+      description: "Archive one of your children (or their children), as the user does in the sidebar: its process ends, and it keeps its whole context. When a child's task is done, archive it, to keep the sidebar clean. If it left real questions for the user, leave it open. If it left only a routine question (for example \"may I restart?\"), ask the user that question in your own conversation, then archive the child. A message from you to your archived child can take it out of the archive again, if the user says yes.",
       inputSchema: { type: 'object', required: ['id'], properties: { id: { type: 'string' } } },
       run: ({ id: target }) => {
         const s = session(target)
@@ -327,7 +339,7 @@ export function mailTools(id: string): Tool[] {
         s.meta.archived = true
         s.stop()
         ctx.changed()
-        return `Archived "${s.meta.title}". A message from its parent takes it out of the archive again.`
+        return `Archived "${s.meta.title}". A message from its parent takes it out of the archive again, if the user says yes.`
       },
     },
   ]

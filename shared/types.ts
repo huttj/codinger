@@ -98,11 +98,13 @@ export type SessionMeta = {
 export type MailFilter = { mode: 'any' | 'only' | 'none'; ids?: string[] }
 // A message from one session to another. replyTo: the message it answers, and the start of
 // its text. idle: Codinger's note that a child ended its turn. held: past the limit of
-// messages in a row, it waits for your OK. step: from a child to its parent, it waits for the
+// messages in a row, it waits for your OK. reopens: held because the receiver is archived; your
+// OK takes the receiver out of the archive. decided: Codinger's note to the sender of such a
+// message, with your answer. step: from a child to its parent, it waits for the
 // child's next tool call or the end of its turn; endTurn: the child's turn ended after it.
 export type Mail = {
   id: string; from: string; title: string; text: string; ts: number
-  replyTo?: { id: string; text: string }; idle?: boolean; held?: boolean; step?: boolean; endTurn?: boolean
+  replyTo?: { id: string; text: string }; idle?: boolean; held?: boolean; reopens?: boolean; decided?: boolean; step?: boolean; endTurn?: boolean
 }
 
 // Autopilot (server/autopilot.ts): after each turn Codinger tells Claude to go on, until the
@@ -161,7 +163,7 @@ export type Part =
   // Verdicts on the agent's changes and comments on their lines (shared/review.ts).
   | { kind: 'review'; text: string; files: FileVerdict[]; comments: LineComment[]; images?: ImageRef[] }
   // A message from another session (see Mail); relation: what the sender is to this session.
-  | { kind: 'mail'; text: string; id: string; from: string; title: string; relation?: 'parent' | 'child'; replyTo?: { id: string; text: string }; idle?: boolean; endTurn?: boolean; images?: ImageRef[] }
+  | { kind: 'mail'; text: string; id: string; from: string; title: string; relation?: 'parent' | 'child'; replyTo?: { id: string; text: string }; idle?: boolean; decided?: boolean; endTurn?: boolean; images?: ImageRef[] }
 
 export type Block =
   | { type: 'text'; text: string }

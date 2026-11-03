@@ -10,6 +10,7 @@ export const MAX_RUN = 20
 export function formatMail(p: MailPart): string {
   const who = `session \`${p.from}\` ("${p.title}"${p.relation ? `, your ${p.relation}` : ''})`
   if (p.idle) return `[Codinger] Your child ${who} ended its turn and is idle.${p.text ? ` ${p.text}` : ''}`
+  if (p.decided) return `[Codinger] ${p.text}`
   const head = p.replyTo
     ? `Reply \`${p.id}\` from ${who} to your message \`${p.replyTo.id}\` ("${p.replyTo.text}")`
     : `Message \`${p.id}\` from ${who}`
