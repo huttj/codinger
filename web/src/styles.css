@@ -859,6 +859,8 @@ button.done-mark:hover { background: color-mix(in srgb, var(--ok) 12%, transpare
 .ask-tag { text-transform: uppercase; letter-spacing: .06em; color: var(--blue); font-weight: 700; }
 .ask-q > :first-child { margin-top: 2px; } .ask-q > :last-child { margin-bottom: 4px; }
 .ask-answer { font-size: calc(13px * var(--fs, 1)); }
+.ask-answer .md, .ask-answer .md > p:first-child { display: inline; }
+.ask-answer .md > :last-child { margin-bottom: 0; }
 /* A <draft>: text to edit and send back (AssistantMessage.tsx DraftCard). */
 .draft-title { font-weight: 600; }
 .draft-text { font-size: calc(13px * var(--fs, 1)); color: var(--muted); max-height: 16em; overflow: auto; margin: 0 -10px; padding: 0 10px; }

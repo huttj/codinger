@@ -74,7 +74,7 @@ export function FileChip({ sid, name }: { sid?: string; name: string }) {
 
 // Markdown with its pastes and attached files as pills, in the line where each was put. Each
 // becomes a mark in the markdown, then a slot in the HTML that gets its pill.
-export function WithPastes({ text, render, sid }: { text: string; render(md: string): string; sid?: string }) {
+export function WithPastes({ text, render, sid, className = 'md' }: { text: string; render(md: string): string; sid?: string; className?: string }) {
   const { html, chips } = useMemo(() => {
     const chips: ({ paste: string } | { file: string })[] = []
     const mark = (c: { paste: string } | { file: string }) => `\uE000${chips.push(c) - 1}\uE001`
@@ -85,7 +85,7 @@ export function WithPastes({ text, render, sid }: { text: string; render(md: str
   const [slots, setSlots] = useState<HTMLElement[]>([])
   useLayoutEffect(() => { setSlots([...ref.current!.querySelectorAll<HTMLElement>('.paste-slot')]) }, [html])
   return <>
-    <div ref={ref} className="md" dangerouslySetInnerHTML={{ __html: html }} />
+    <div ref={ref} className={className} dangerouslySetInnerHTML={{ __html: html }} />
     {slots.map((el, i) => {
       const c = chips[Number(el.dataset.i)]
       return c && createPortal('paste' in c ? <PasteChip text={c.paste} /> : <FileChip sid={sid} name={c.file} />, el, i)

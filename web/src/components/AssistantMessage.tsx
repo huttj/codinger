@@ -25,6 +25,7 @@ import { openFile } from './FileBrowser.tsx'
 import { ReviewCard } from './Review.tsx'
 import { ArtifactFrame } from './Artifacts.tsx'
 import { focusPassage, onPassage } from './Margin.tsx'
+import { WithPastes } from './Paste.tsx'
 import { lastEmoji, topEmoji, usedEmoji } from '../emoji.ts'
 import { highlight } from '../highlight.ts'
 
@@ -809,7 +810,7 @@ function DraftCard({ c, ask, compact, block }: { c: Ctx; ask: Ask & { draft: str
           {status === 'dismissing' && <button className="icon-btn pop-in" title="Undo" onClick={() => undismissItem(c.sid, askKey)}><UndoIcon size={14} /></button>}
           <Done status={answer ? 'answered' : status} />
         </>)}
-        {!compact && !fold.aside && <div className="draft-text md" dangerouslySetInnerHTML={{ __html: renderText(text) }} />}
+        {!compact && !fold.aside && <WithPastes className="draft-text md" text={text} render={renderText} sid={c.sid} />}
       </div>
     )
   }
@@ -882,7 +883,7 @@ function QuestionCard({ c, ask, compact, block }: { c: Ctx; ask: Ask; compact?: 
         </div>
         <div className="ask-answer">
           <span className="muted ask-who">{state.share ? 'Answer:' : 'You:'}</span>{' '}
-          {answer.choices?.length ? <b>{answer.choices.join('; ')}</b> : null} {answer.text}
+          {answer.choices?.length ? <b>{answer.choices.join('; ')}</b> : null} <WithPastes text={answer.text} render={renderText} sid={c.sid} />
           <Thumbs images={answer.images} />
         </div>
       </div>
