@@ -265,6 +265,8 @@ function launchFor(meta: SessionMeta): () => Launch {
         // Started with your MCP servers off: only Codinger's, until one is turned on (server/mcpservers.ts).
         ...(meta.mcp ? ['--strict-mcp-config'] : []),
         '--allowedTools', `mcp__codinger__set_look,mcp__codinger__set_title,mcp__codinger__claim_changes,mcp__codinger__start_task,mcp__codinger__stop_task,mcp__codinger__list_tasks,mcp__codinger__show_artifact,mcp__codinger__show_file,${MAIL_TOOLS.map((t) => `mcp__codinger__${t}`).join(',')}${settings.estimates !== false ? ESTIMATE_TOOLS.map((t) => `,mcp__codinger__${t}`).join('') : ''}${meta.mcp && settings.mcpClaude !== false ? ',mcp__codinger__use_mcp_server' : ''}`,
+        // Agents ask with <ask> cards. The permission card cannot send answers to this tool, so an Allow would give the agent no answer.
+        '--disallowedTools', 'AskUserQuestion',
         // Artifacts live in one folder for every session (server/artifacts.ts).
         '--add-dir', ARTIFACTS,
       ],
