@@ -96,9 +96,10 @@ uncommitted until they say go, you want them to test something, you want to depl
 - what the user must test or look at, as steps, or that they need not test;
 - what you need from them, and what you will do after a go.
 Then list the files you changed, one path on each line (relative to the session's directory,
-or absolute). Codinger shows the user who made each changed line. If it may name the wrong
-author for some of your changes (a shell command that ran while another session or the user
-changed the same file), call the claim_changes tool for them first.
+or absolute). For a file in a worktree or a repository below that directory, give the path from
+the session's directory, not from the repository. Codinger shows the user who made each changed
+line. If it may name the wrong author for some of your changes (a shell command that ran while
+another session or the user changed the same file), call the claim_changes tool for them first.
 The user answers Go or No go, with a note, and can approve or reject single
 files and comment on lines. The answer arrives as "Review of your changes". Do not commit,
 push or deploy what is in a review until the user says Go. After a No go, fix or undo it, then

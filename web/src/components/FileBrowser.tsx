@@ -72,7 +72,8 @@ export function FileBrowser({ m, width }: { m: SessionMeta; width: number }) {
   const [roots, setRoots] = useState<string[]>([])     // folders outside the session's folder that a link opened
   const [dirs, setDirs] = useState<Record<string, Entry[] | string>>({})
   const [open, setOpen] = useState<Set<string>>(new Set())
-  const [file, setFile] = useState<{ path: string; size: number; line?: number; changes: boolean; group?: string; at: number } | null>(null)
+  // named: its path in its group for review; path: where it is, which can differ (server/files.ts locate).
+  const [file, setFile] = useState<{ path: string; named: string; size: number; line?: number; changes: boolean; group?: string; at: number } | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [stamp, setStamp] = useState(0)                // a change makes the open file load again
   const [search, setSearch] = useState('')
@@ -109,7 +110,7 @@ export function FileBrowser({ m, width }: { m: SessionMeta; width: number }) {
     if (!want) { setFile(null); setErr(null); return }
     if (!root) return
     setErr(null)
-    void getJson<Node>(fsUrl(want.path)).then((n) => {
+    void getJson<Node>(fsUrl(want.path) + (want.group ? `&reviewSeq=${parseInt(want.group)}` : '')).then((n) => {
       const inRoot = n.path === root || n.path.startsWith(root + sepOf(n.path))
       if (!inRoot && n.kind === 'dir' && !roots.includes(n.path)) setRoots((r) => [...r, n.path])
       // Open the folders down to it.
@@ -118,7 +119,7 @@ export function FileBrowser({ m, width }: { m: SessionMeta; width: number }) {
       if (n.kind === 'dir') { chain.push(n.path); setDirs((d) => ({ ...d, [n.path]: n.entries })) }
       setOpen((o) => new Set([...o, ...chain]))
       for (const d of chain) if (!dirs[d]) void load(d)
-      setFile(n.kind === 'file' ? { path: n.path, size: n.size, line: want.line, changes: !!want.changes, group: want.group, at: want.at } : null)
+      setFile(n.kind === 'file' ? { path: n.path, named: want.group ? want.path : n.path, size: n.size, line: want.line, changes: !!want.changes, group: want.group, at: want.at } : null)
     }).catch((e: Error) => { setFile(null); setErr(`${want.path}: ${e.message}`) })
   }, [want?.at, root])
 
@@ -154,7 +155,7 @@ export function FileBrowser({ m, width }: { m: SessionMeta; width: number }) {
     if (x.has(d)) x.delete(d); else { x.add(d); if (!dirs[d]) void load(d) }
     return x
   })
-  const isOn = (p: string) => !!file && (file.path === p || rel(file.path) === p || rel(file.path) === rel(p))
+  const isOn = (p: string) => !!file && (file.path === p || rel(file.path) === p || rel(file.path) === rel(p) || rel(file.named) === rel(p))
 
   const tree = (dir: string, depth: number): React.ReactNode => {
     const list = dirs[dir]
@@ -237,8 +238,8 @@ export function FileBrowser({ m, width }: { m: SessionMeta; width: number }) {
   const fileEdits = file ? [...edits].find(([p]) => p === file.path || rel(p) === rel(file.path))?.[1] ?? [] : []
   // The open file's group for review, its verdict, and the next file of the groups that has none.
   let review: ReviewOf | undefined
-  const g = file && groupOfFile(rv.shown, file.path, file.group, rel)
-  const path = g && g.files.find((f) => rel(f) === rel(file!.path))   // as the agent named it
+  const g = file && groupOfFile(rv.shown, file.named, file.group, rel)
+  const path = g && g.files.find((f) => rel(f) === rel(file!.named))   // as the agent named it
   if (g && path) {
     const v = rv.of(g.key, path)
     const order = rv.shown.flatMap((x) => x.files.map((f) => ({ g: x.key, f })))

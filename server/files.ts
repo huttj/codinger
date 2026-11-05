@@ -65,6 +65,49 @@ export function allowed(meta: SessionMeta, events: Event[], p: string): string |
   return null
 }
 
+// The folders that a shell command names: cd and git -C, with a full path only (a relative one depends
+// on the shell's folder at that time).
+const SHELL_DIR = /(?:^|&&|\|\||;|\n)\s*(?:cd|pushd|git\s+-C)\s+("[^"\n]+"|'[^'\n]+'|[^\s;&|]+)/g
+
+// A path in a <review> tag of message seq, when it is not under the session's directory: the agent wrote
+// it relative to a repository below that directory (a worktree, say). The same path can be in several of
+// them, so this uses the folders where the agent worked before that message, newest first, and the folders
+// above them. Without a match, the path stays as it is.
+export function locate(meta: SessionMeta, events: Event[], p: string, seq: number): string {
+  const cwd = path.resolve(expandHome(meta.cwd))
+  const abs = resolveIn(meta.cwd, p)
+  if (fs.existsSync(abs) || !under(abs, cwd)) return p
+  const rel = path.relative(cwd, abs)
+  const tried = new Set<string>()
+  const find = (dir: string) => {
+    for (let d = dir; d !== cwd && under(d, cwd) && !tried.has(d); d = path.dirname(d)) {
+      tried.add(d)
+      if (fs.existsSync(path.join(d, rel))) return path.join(d, rel)
+    }
+    return null
+  }
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i]
+    if (e.t !== 'assistant' || e.seq > seq) continue
+    for (const b of [...e.blocks].reverse()) {
+      if (b.type !== 'tool_use') continue
+      const dirs: string[] = []
+      if (b.name === 'Bash' && typeof b.input?.command === 'string') {
+        for (const m of b.input.command.matchAll(SHELL_DIR)) {
+          const d = m[1].replace(/^(["'])(.*)\1$/, '$2')
+          if (d.startsWith('/') || d.startsWith('~/')) dirs.unshift(path.resolve(expandHome(d)))
+        }
+      } else if (/^(Write|Edit|MultiEdit|NotebookEdit)$/.test(b.name)) {
+        const f = b.input?.file_path ?? b.input?.notebook_path
+        // The agent's notes do not show where it works: they can be in another repository.
+        if (typeof f === 'string' && path.isAbsolute(f) && !/[\\/]\.codinger[\\/]notes[\\/]/.test(f)) dirs.push(path.dirname(f))
+      }
+      for (const d of dirs) { const hit = find(d); if (hit) return hit }
+    }
+  }
+  return p
+}
+
 // Which of names (in dir) git ignores; none if dir is not in a git repository.
 function ignored(dir: string, names: string[]): Promise<Set<string>> {
   if (!names.length) return Promise.resolve(new Set())
