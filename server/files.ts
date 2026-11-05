@@ -69,40 +69,52 @@ export function allowed(meta: SessionMeta, events: Event[], p: string): string |
 // on the shell's folder at that time).
 const SHELL_DIR = /(?:^|&&|\|\||;|\n)\s*(?:cd|pushd|git\s+-C)\s+("[^"\n]+"|'[^'\n]+'|[^\s;&|]+)/g
 
-// A path in a <review> tag of message seq, when it is not under the session's directory: the agent wrote
-// it relative to a repository below that directory (a worktree, say). The same path can be in several of
-// them, so this uses the folders where the agent worked before that message, newest first, and the folders
-// above them. Without a match, the path stays as it is.
+// The folders below the session's directory where the agent worked, oldest first, each with the message
+// that shows it. The agent's notes do not show where it works: they can be in another repository.
+const worked = new Map<string, { n: number; dirs: { seq: number; dir: string }[] }>()
+function workedIn(meta: SessionMeta, events: Event[]) {
+  const had = worked.get(meta.id)
+  if (had && had.n === events.length) return had.dirs
+  const cwd = path.resolve(expandHome(meta.cwd))
+  const dirs: { seq: number; dir: string }[] = []
+  const add = (seq: number, dir: string) => {
+    if (dir !== cwd && under(dir, cwd) && dirs.at(-1)?.dir !== dir) dirs.push({ seq, dir })
+  }
+  for (const e of events) {
+    if (e.t !== 'assistant') continue
+    for (const b of e.blocks) {
+      if (b.type !== 'tool_use') continue
+      if (b.name === 'Bash' && typeof b.input?.command === 'string') {
+        for (const m of b.input.command.matchAll(SHELL_DIR)) {
+          const d = m[1].replace(/^(["'])(.*)\1$/, '$2')
+          if (d.startsWith('/') || d.startsWith('~/')) add(e.seq, path.resolve(expandHome(d)))
+        }
+      } else if (/^(Write|Edit|MultiEdit|NotebookEdit)$/.test(b.name)) {
+        const f = b.input?.file_path ?? b.input?.notebook_path
+        if (typeof f === 'string' && path.isAbsolute(f) && !/[\\/]\.codinger[\\/]notes[\\/]/.test(f)) add(e.seq, path.dirname(f))
+      }
+    }
+  }
+  worked.set(meta.id, { n: events.length, dirs })
+  return dirs
+}
+
+// A path that message seq names (in a <review> tag, a link or inline code), when it is not under the
+// session's directory: the agent wrote it relative to a repository below that directory (a worktree, say).
+// The same path can be in several of them, so this uses the folders where the agent worked up to that
+// message, newest first, and the folders above them. Without a match, the path stays as it is.
 export function locate(meta: SessionMeta, events: Event[], p: string, seq: number): string {
   const cwd = path.resolve(expandHome(meta.cwd))
   const abs = resolveIn(meta.cwd, p)
   if (fs.existsSync(abs) || !under(abs, cwd)) return p
   const rel = path.relative(cwd, abs)
+  const dirs = workedIn(meta, events)
   const tried = new Set<string>()
-  const find = (dir: string) => {
-    for (let d = dir; d !== cwd && under(d, cwd) && !tried.has(d); d = path.dirname(d)) {
+  for (let i = dirs.length - 1; i >= 0; i--) {
+    if (dirs[i].seq > seq) continue
+    for (let d = dirs[i].dir; d !== cwd && under(d, cwd) && !tried.has(d); d = path.dirname(d)) {
       tried.add(d)
       if (fs.existsSync(path.join(d, rel))) return path.join(d, rel)
-    }
-    return null
-  }
-  for (let i = events.length - 1; i >= 0; i--) {
-    const e = events[i]
-    if (e.t !== 'assistant' || e.seq > seq) continue
-    for (const b of [...e.blocks].reverse()) {
-      if (b.type !== 'tool_use') continue
-      const dirs: string[] = []
-      if (b.name === 'Bash' && typeof b.input?.command === 'string') {
-        for (const m of b.input.command.matchAll(SHELL_DIR)) {
-          const d = m[1].replace(/^(["'])(.*)\1$/, '$2')
-          if (d.startsWith('/') || d.startsWith('~/')) dirs.unshift(path.resolve(expandHome(d)))
-        }
-      } else if (/^(Write|Edit|MultiEdit|NotebookEdit)$/.test(b.name)) {
-        const f = b.input?.file_path ?? b.input?.notebook_path
-        // The agent's notes do not show where it works: they can be in another repository.
-        if (typeof f === 'string' && path.isAbsolute(f) && !/[\\/]\.codinger[\\/]notes[\\/]/.test(f)) dirs.push(path.dirname(f))
-      }
-      for (const d of dirs) { const hit = find(d); if (hit) return hit }
     }
   }
   return p

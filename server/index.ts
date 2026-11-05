@@ -1311,11 +1311,14 @@ async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL
   }
   if (a === 'fs' && id === 'exists' && method === 'POST') {
     // Paths named in a reply (absolute, ~/, or under the session's directory, maybe with :line): which are there.
+    // sid and seq: the session and the message, for a path relative to a worktree (server/files.ts locate).
     const body = await json(req)
     const cwd = expandHome(String(body.cwd ?? '~'))
+    const from = sessions.get(String(body.sid)), seq = Number(body.seq)
     const out: Record<string, string | null> = {}
     for (const p of (Array.isArray(body.paths) ? body.paths : []).slice(0, 200).map(String)) {
-      const abs = path.resolve(cwd, expandHome(p.replace(/(:\d+){1,2}$/, '')))
+      const bare = p.replace(/(:\d+){1,2}$/, '')
+      const abs = path.resolve(cwd, expandHome(from && seq ? locate(from.meta, from.getEvents(), bare, seq) : bare))
       out[p] = fs.existsSync(abs) ? abs : null
     }
     return send(res, 200, out)
@@ -1474,9 +1477,9 @@ async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL
   }
   if (b === 'fs' && method === 'GET') {
     // A folder or a file for the Files pane (server/files.ts): a folder's entries, or a file's size.
-    // reviewSeq: the path comes from a <review> tag in that message, and can be relative to a worktree.
-    const named = url.searchParams.get('path') || '.', reviewSeq = Number(url.searchParams.get('reviewSeq'))
-    const abs = allowed(s.meta, s.getEvents(), reviewSeq ? locate(s.meta, s.getEvents(), named, reviewSeq) : named)
+    // seq: the message that names the path, which can be relative to a worktree.
+    const named = url.searchParams.get('path') || '.', seq = Number(url.searchParams.get('seq'))
+    const abs = allowed(s.meta, s.getEvents(), seq ? locate(s.meta, s.getEvents(), named, seq) : named)
     let st: fs.Stats | null = null
     try { st = abs ? fs.statSync(abs) : null } catch {}
     if (!abs || !st) throw new HttpError(404, 'No such file, or not one this session can show')

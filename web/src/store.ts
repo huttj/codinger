@@ -93,7 +93,7 @@ type State = {
   artifactV?: number                 // and the version of it on view there (none: the latest)
   settingsPage: string | null        // Settings is open, on this page
   panels: Record<string, Panel>      // by session: the panel beside it (SidePanel.tsx)
-  fileOpen: Record<string, { path: string; line?: number; changes?: boolean; group?: string; at: number }>   // by session: the file or folder its Files tab shows, and the group for review it was opened from
+  fileOpen: Record<string, { path: string; line?: number; changes?: boolean; group?: string; seq?: number; at: number }>   // by session: the file or folder its Files tab shows, and the group for review it was opened from
   artifacts: Artifact[]
   artifactsPort: number              // where the server that runs artifacts listens
   prolifica: ProlificaState

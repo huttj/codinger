@@ -45,11 +45,12 @@ function editsOf(sid: string): Map<string, Edit[]> {
 }
 
 // Opens the Files tab on a path (absolute, ~/, or under the session's directory), maybe with :line.
-// changes: show what changed in it; group: the group for review it was opened from (Review.tsx).
-export function openFile(sid: string, p: string, changes = false, group?: string) {
+// changes: show what changed in it; group: the group for review it was opened from (Review.tsx);
+// seq: the message that names it, when that is not the group's.
+export function openFile(sid: string, p: string, changes = false, group?: string, seq = group ? parseInt(group) : undefined) {
   const m = /^(.*?)(?::(\d+))?(?::\d+)?$/.exec(p.trim())!
   setPanel(sid, { tab: 'files' })
-  state.fileOpen = { ...state.fileOpen, [sid]: { path: m[1], line: m[2] ? Number(m[2]) : undefined, changes, group, at: Date.now() } }
+  state.fileOpen = { ...state.fileOpen, [sid]: { path: m[1], line: m[2] ? Number(m[2]) : undefined, changes, group, seq, at: Date.now() } }
   changed()
 }
 
@@ -110,7 +111,7 @@ export function FileBrowser({ m, width }: { m: SessionMeta; width: number }) {
     if (!want) { setFile(null); setErr(null); return }
     if (!root) return
     setErr(null)
-    void getJson<Node>(fsUrl(want.path) + (want.group ? `&reviewSeq=${parseInt(want.group)}` : '')).then((n) => {
+    void getJson<Node>(fsUrl(want.path) + (want.seq ? `&seq=${want.seq}` : '')).then((n) => {
       const inRoot = n.path === root || n.path.startsWith(root + sepOf(n.path))
       if (!inRoot && n.kind === 'dir' && !roots.includes(n.path)) setRoots((r) => [...r, n.path])
       // Open the folders down to it.

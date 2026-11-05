@@ -16,7 +16,7 @@ import type { Anchor } from '../../../shared/types.ts'
 import { holdKeyboard, marked, renderInline, renderText, served } from '../util.ts'
 import { anchorFromRange, mediaIn, passageQuote, rangesFor, setHighlights } from '../anchoring.ts'
 import { render as renderLive } from '../mdlive.ts'
-import { addDraft, api, changed, LOCAL, machineOf, dismissItem, draftsOf, markDone, removeDraft, reviveItem, setDoneText, state, uid, undismissItem, updateDraft, useStore, type AnswerDraft, type DoneDraft, type NoteDraft } from '../store.ts'
+import { addDraft, api, changed, LOCAL, localId, machineOf, dismissItem, draftsOf, markDone, removeDraft, reviveItem, setDoneText, state, uid, undismissItem, updateDraft, useStore, type AnswerDraft, type DoneDraft, type NoteDraft } from '../store.ts'
 import type { TrackedItem } from '../items.ts'
 import { focusField, RichInput, Thumbs } from './Inputs.tsx'
 import { CheckIcon, ChevronIcon, CommentIcon, PlusIcon, TerminalIcon, UndoIcon, XIcon } from './Icons.tsx'
@@ -136,7 +136,7 @@ export const AssistantMessage = memo(function AssistantMessage({ sid, msg, text,
   }, [noteKey, sentKey, pieces, sid, msg, live])
   useCodeCopy(root, live)
   useBlockCopy(root, pieces, live)
-  useReveal(root, sid, pieces, live)
+  useReveal(root, sid, msg, pieces, live)
 
   return (
     <div className={`assistant-text md${live ? ' streaming' : ''}`} ref={root} {...(live ? {} : { 'data-msg': msg, 'data-sid': sid })}>
@@ -601,22 +601,23 @@ function useBlockCopy(root: React.RefObject<HTMLDivElement | null>, pieces: Piec
 // in Finder. Only paths that are there get them. A link to a path opens it in the pane too.
 const PATH = /^(?:(?:~|\.{0,2})\/[^\n<>"|*?]*|[\w.@+-]+\/[^\s<>"|*?]*|[\w@+-][\w.@+-]*\.\w{1,8}(?::\d+){0,2})$/
 const LOCAL_HREF = /^(?![a-z][a-z0-9+.-]*:|\/\/|#|\/api\/)/i
-const found = new Map<string, string | null>()   // machine + cwd + path → the full path, or null
+const found = new Map<string, string | null>()   // machine + cwd + session + message + path → the full path, or null
 const FOLDER = '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M2 4.5V12a1 1 0 001 1h10a1 1 0 001-1V6a1 1 0 00-1-1H8L6.5 3.5H3A1 1 0 002 4.5z"/></svg>'
 
-function useReveal(root: React.RefObject<HTMLDivElement | null>, sid: string, pieces: Piece[], live: boolean) {
+function useReveal(root: React.RefObject<HTMLDivElement | null>, sid: string, msg: string, pieces: Piece[], live: boolean) {
   useEffect(() => {
     const el = root.current
     if (!el || live || state.share) return
+    const seq = parseInt(msg)
     for (const a of el.querySelectorAll<HTMLAnchorElement>('a[href]')) {
       const href = a.getAttribute('href')!
       if (!LOCAL_HREF.test(href) || a.dataset.file) continue
       a.dataset.file = '1'
-      a.addEventListener('click', (e) => { e.preventDefault(); openFile(sid, decodeURI(href.split('#')[0])) })
+      a.addEventListener('click', (e) => { e.preventDefault(); openFile(sid, decodeURI(href.split('#')[0]), false, undefined, seq) })
     }
     const machine = machineOf(sid)
     const cwd = state.sessions.find((s) => s.id === sid)?.cwd ?? '~'
-    const key = (t: string) => `${machine}\n${cwd}\n${t}`
+    const key = (t: string) => `${machine}\n${cwd}\n${sid}\n${seq}\n${t}`
     const codes = [...el.querySelectorAll<HTMLElement>('code')].filter((c) => {
       const t = c.textContent?.trim() ?? ''
       return !c.closest('pre, a') && !c.classList.contains('file-link') && t.length < 400 && !t.includes('://') && PATH.test(t)
@@ -629,7 +630,7 @@ function useReveal(root: React.RefObject<HTMLDivElement | null>, sid: string, pi
         const abs = found.get(key(t))
         if (!abs || !c.isConnected || c.classList.contains('file-link')) continue
         c.classList.add('file-link')
-        c.addEventListener('click', () => { if (getSelection()?.isCollapsed) openFile(sid, t) })
+        c.addEventListener('click', () => { if (getSelection()?.isCollapsed) openFile(sid, t, false, undefined, seq) })
         if (machine !== LOCAL || state.web) continue
         const b = document.createElement('button')
         b.className = 'reveal'
@@ -641,12 +642,12 @@ function useReveal(root: React.RefObject<HTMLDivElement | null>, sid: string, pi
     }
     const ask = [...new Set(codes.map((c) => c.textContent!.trim()))].filter((t) => !found.has(key(t)))
     if (!ask.length) add()
-    else void api<Record<string, string | null>>('/api/fs/exists', 'POST', { cwd, paths: ask }, machine).then((r) => {
+    else void api<Record<string, string | null>>('/api/fs/exists', 'POST', { cwd, paths: ask, sid: localId(sid), seq }, machine).then((r) => {
       for (const t of ask) found.set(key(t), r[t] ?? null)
       if (!gone) add()
     }).catch(() => {})
     return () => { gone = true }
-  }, [root, sid, pieces, live])
+  }, [root, sid, msg, pieces, live])
 }
 
 // The <details> you opened, so that one stays open when its message renders anew.
