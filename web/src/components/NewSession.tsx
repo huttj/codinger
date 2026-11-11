@@ -23,7 +23,8 @@ function writeDraft(d: Draft | null) {
 // machine: where it runs; the current session's by default.
 // title and prompt: filled in already (a link from another app, url.ts).
 export function NewSession({ cwd: initial, machine: start = currentMachine(), group, title: initialTitle = '', prompt: initialPrompt = '', onClose }: { cwd: string; machine?: string; group?: string; title?: string; prompt?: string; onClose(): void }) {
-  useEscape(onClose)
+  // With something typed, Esc asks first (what you typed is kept either way).
+  useEscape(() => { if (!typed || confirm('Close this new session? What you typed is kept for next time.')) onClose() })
   const [machine, setMachine] = useState(start)
   const [cwd, setCwd] = useState(initial)
   // A link's own title and message (url.ts) come first, and don't touch the kept draft.
