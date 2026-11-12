@@ -8,6 +8,7 @@ import { McpPicker } from './McpDialog.tsx'
 import { SessionPicker } from './SessionPicker.tsx'
 import { focusField, RichInput } from './Inputs.tsx'
 import { ChevronIcon } from './Icons.tsx'
+import { FAMILIES, modelLabel, parseModel, VERSIONS } from '../../../shared/models.ts'
 
 // machine: where it runs; the current session's by default.
 // title and prompt: filled in already (a link from another app, url.ts).
@@ -16,7 +17,12 @@ export function NewSession({ cwd: initial, machine: start = currentMachine(), gr
   const [machine, setMachine] = useState(start)
   const [cwd, setCwd] = useState(initial)
   const [title, setTitle] = useState(initialTitle)
-  const [model, setModel] = useState('')
+  // family: '' for the default, else an alias; version: '' for the version Claude Code picks, else a model ID.
+  const [family, setFamily] = useState('')
+  const [version, setVersion] = useState('')
+  const model = version || family
+  // What the default and each alias ran last time on that machine, to name its version.
+  const [ran, setRan] = useState<Record<string, string>>({})
   const [mode, setMode] = useState<PermissionMode>('auto')
   const [flags, setFlags] = useState<string[]>([])
   const [parentId, setParentId] = useState('')
@@ -36,7 +42,7 @@ export function NewSession({ cwd: initial, machine: start = currentMachine(), gr
   // What is set there, when it is closed.
   const parent = state.sessions.find((s) => s.id === parentId)
   const summary = [
-    model && model[0].toUpperCase() + model.slice(1),
+    model && modelLabel(model),
     mode !== 'auto' && { default: 'Ask before tools', acceptEdits: 'Auto-accept edits', plan: 'Plan only', bypassPermissions: 'Bypass permissions' }[mode as string],
     flags.length && `${flags.length} ${flags.length === 1 ? 'flag' : 'flags'}`,
     mcp && `${mcp.length} MCP ${mcp.length === 1 ? 'server' : 'servers'}`,
@@ -52,6 +58,17 @@ export function NewSession({ cwd: initial, machine: start = currentMachine(), gr
     }, 200)
     return () => { live = false; clearTimeout(t) }
   }, [cwd, machine])
+
+  useEffect(() => {
+    let live = true
+    void api<Record<string, string>>('/api/models', 'GET', undefined, machine).then((r) => { if (live) setRan(r) }).catch(() => {})
+    return () => { live = false }
+  }, [machine])
+  // The version an alias ran last time, else the newest one known.
+  const picks = (alias: string) => {
+    const got = ran[alias]
+    return got?.includes('-') ? parseModel(got).version : alias ? VERSIONS[alias]?.[0]?.version : null
+  }
 
   const create = async () => {
     setBusy(true); setErr(null)
@@ -88,12 +105,19 @@ export function NewSession({ cwd: initial, machine: start = currentMachine(), gr
           <span className="adv-label"><ChevronIcon size={12} className={advanced ? 'open' : undefined} />Advanced settings{!advanced && summary && <span className="muted"> · {summary}</span>}</span>
         </button>
         {advanced && <>
-          <div className="two">
+          <div className={family ? 'two three' : 'two'}>
             <label>Model
-              <select value={model} onChange={(e) => setModel(e.target.value)}>
-                <option value="">Default</option><option value="opus">Opus</option><option value="sonnet">Sonnet</option><option value="haiku">Haiku</option><option value="fable">Fable</option>
+              <select value={family} onChange={(e) => { setFamily(e.target.value); setVersion('') }}>
+                <option value="">Default{ran['']?.includes('-') ? ` (${modelLabel(ran[''])})` : ''}</option>
+                {FAMILIES.map((f) => <option key={f} value={f}>{modelLabel(f)}</option>)}
               </select>
             </label>
+            {family && <label>Version
+              <select value={version} onChange={(e) => setVersion(e.target.value)}>
+                <option value="">Latest{picks(family) ? ` (${picks(family)})` : ''}</option>
+                {VERSIONS[family].map((v) => <option key={v.id} value={v.id}>{v.version}</option>)}
+              </select>
+            </label>}
             <label>Permissions
               <select value={mode} onChange={(e) => setMode(e.target.value as PermissionMode)}>
                 <option value="auto">Auto mode</option><option value="default">Ask before tools</option><option value="acceptEdits">Auto-accept edits</option><option value="plan">Plan only</option><option value="bypassPermissions">Bypass permissions</option>

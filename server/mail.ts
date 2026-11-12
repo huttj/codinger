@@ -242,7 +242,7 @@ export function mailTools(id: string): Tool[] {
           title: { type: 'string', description: 'Its name: 2 to 5 words' },
           prompt: { type: 'string', description: 'The work, with all the context it needs: it does not see your conversation' },
           cwd: { type: 'string', description: 'An existing directory, absolute or ~; yours by default' },
-          model: { type: 'string', description: 'opus, sonnet, haiku or fable; omit for the default' },
+          model: { type: 'string', description: 'opus, sonnet, haiku or fable for the version Claude Code picks, or a full model ID (claude-opus-4-8) for one version; omit for the default' },
         },
       },
       run: ({ title, prompt, cwd, model }) => {

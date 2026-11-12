@@ -1102,6 +1102,7 @@ label:has(> input[type="checkbox"]) { flex-direction: row; align-items: center; 
 label > input[type="checkbox"] { flex: none; margin: 0; }
 .modal .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.modal .two.three { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
 
 /* Settings: the notes files and their history (SettingsDialog.tsx). */
 .modal-back:has(.files-modal) { padding-top: 5vh; }

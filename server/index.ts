@@ -48,7 +48,7 @@ import { deviceType, findDevice } from './device.ts'
 import { remoteCancelLink, remoteForget, remoteHub, remoteLink, remoteName, remoteOn, remoteNotify, remoteProxy, remoteStatus, remoteUpgrade, startRemote } from './remote.ts'
 import { startUpdates, updateModeChanged, updateNow, updatePrompt, updateStatus } from './update.ts'
 import {
-  DATA, LEAD_DIR, LEAD_NOTES, OLD_LEAD_NOTES, appendEvent, deleteEvents, readEvents, expandHome, imageFile, knownWindow, leadRenamed, resolveModel, loadSessions, promptFile, loadSettings, saveImage, saveSessions, saveSettings,
+  DATA, LEAD_DIR, LEAD_NOTES, OLD_LEAD_NOTES, appendEvent, deleteEvents, readEvents, expandHome, imageFile, knownWindow, leadRenamed, resolveModel, aliasModels, loadSessions, promptFile, loadSettings, saveImage, saveSessions, saveSettings,
 } from './store.ts'
 import { embedOf, mediaKind, mediaType } from '../shared/media.ts'
 import { MEDIA_MAX, MEDIA_PART, keepMedia, mediaFile } from './media.ts'
@@ -904,7 +904,7 @@ const tools: Tool[] = [
         cwd: { type: 'string', description: 'Absolute or ~ path to an existing directory' },
         title: { type: 'string' }, prompt: { type: 'string' },
         parent: { type: 'string', description: 'Id of the session this one is a sub-task of' },
-        model: { type: 'string', description: 'opus, sonnet, haiku or fable; omit for the default' },
+        model: { type: 'string', description: 'opus, sonnet, haiku or fable for the version Claude Code picks, or a full model ID (claude-opus-4-8) for one version; omit for the default' },
       },
     },
     run: ({ cwd, title, prompt, parent, model }) => {
@@ -1060,6 +1060,9 @@ async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL
     if (method === 'POST' && id === 'forget') { remoteForget(); return send(res, 200, remoteStatus()) }
     if (method === 'POST' && id === 'hub') { remoteHub(String((await json(req)).hub ?? '')); return send(res, 200, remoteStatus()) }
   }
+
+  // What the default model ('') and each alias ran last time, for the model picker.
+  if (a === 'models' && method === 'GET' && !id) return send(res, 200, aliasModels())
 
   if (a === 'images' && method === 'GET') {
     const file = imageFile(url.pathname)

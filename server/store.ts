@@ -105,6 +105,7 @@ const isAlias = (model: string | null | undefined) => !model || !model.includes(
 export function resolveModel(model: string | null | undefined): string | null {
   return isAlias(model) ? models[model ?? ''] ?? model ?? null : model!
 }
+export function aliasModels(): Record<string, string> { return { ...models } }
 export function learnModel(asked: string | null | undefined, got: string) {
   if (!isAlias(asked) || !got || models[asked ?? ''] === got) return
   models[asked ?? ''] = got

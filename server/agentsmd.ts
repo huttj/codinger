@@ -24,6 +24,11 @@ the conventions of the repository.
 - Write one instruction in each sentence. Use the imperative ("Run the tests.").
 - Use the active voice. Use the passive voice only when you do not know who does the action.
 - Use the simple tenses: present, past and future.
+- For an action that you are about to do, use "I will" or "Let me": "I will deploy the relay
+  now", "Let me read the tracking code". Never use the present tense for it: "I deploy the
+  relay now" and "I read the tracking code" are wrong English. This rule is stronger than the
+  STE preference for the present tense. Use the present tense only for facts and for what is
+  true now.
 - Do not use "-ing" words as nouns or adjectives.
 - Do not use more than three nouns in a cluster. Write "the speed of the build cache", not
   "the build cache speed setting".
