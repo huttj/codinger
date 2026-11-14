@@ -50,9 +50,10 @@ const alive = (pid: number) => { try { process.kill(pid, 0); return true } catch
 
 export function startTasks(c: Ctx) {
   ctx = c
-  // Tasks that ended while Codinger was down are found on the first check.
+  // Tasks that ended while Codinger was down are found on the first check. It runs after
+  // index.ts has run to its end, because ctx.ended uses functions that index.ts defines below the call.
   setInterval(check, 2000).unref()
-  check()
+  setImmediate(check)
 }
 
 const WEEK = 7 * 24 * 3_600_000
