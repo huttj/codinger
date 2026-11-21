@@ -37,6 +37,9 @@ const LOGIN_MS = 15 * 60_000
 const LINK_MS = 10 * 60_000
 
 type Login = { email: string; exp: number; next?: string }
+// The code in the same email, by address: the newest request only. login: the key of its link.
+type Code = { code: string; exp: number; tries: number; login: string; next?: string }
+const CODE_TRIES = 5
 type Session = { email: string; exp: number }
 // On artifacts.codinger.app: good for as long as the sign-in on web.codinger.app it came from (of: its hash).
 type ArtSession = { of: string }
@@ -79,13 +82,21 @@ export class Hub extends DurableObject<Env> {
       if (p.startsWith('/m/')) return await this.tunnel(req, url)
       switch (`${req.method} ${p}`) {
         case 'GET /_remote/whoami': {
-          const s = await this.session(req)
-          return json(s ? { web: true, email: s.email } : { web: true, email: null }, s ? 200 : 401)
+          const s = await this.signedIn(req)
+          if (!s) return json({ web: true, email: null }, 401)
+          const res = json({ web: true, email: s.v.email })
+          // Each page load renews the sign-in, at most once a day, so it ends after 30 days without use.
+          if (s.v.exp < Date.now() + (SESSION_DAYS - 1) * 86_400_000) {
+            await this.ctx.storage.put(`session:${await hash(s.s)}`, { ...s.v, exp: Date.now() + SESSION_DAYS * 86_400_000 } satisfies Session)
+            res.headers.set('set-cookie', sessionCookie(s.s))
+          }
+          return res
         }
-        case 'GET /_remote/login': return loginPage(url.searchParams.get('next') ?? '')
+        case 'GET /_remote/login': return loginPage(safeNext(url.searchParams.get('next') ?? '') ?? '')
         case 'POST /_remote/login': return await this.login(req, url)
         case 'GET /_remote/verify': return verifyPage(url.searchParams.get('t') ?? '')
         case 'POST /_remote/verify': return await this.verify(req)
+        case 'POST /_remote/code': return await this.verifyCode(req)
         case 'POST /_remote/logout': return await this.logout(req)
         case 'POST /_remote/link/start': return await this.linkStart(req, url)
         case 'POST /_remote/link/poll': return await this.linkPoll(req)
@@ -163,19 +174,43 @@ export class Hub extends DurableObject<Env> {
   private async login(req: Request, url: URL): Promise<Response> {
     const form = await req.formData()
     const email = String(form.get('email') ?? '').trim().toLowerCase()
-    const next = String(form.get('next') ?? '')
+    const next = safeNext(String(form.get('next') ?? ''))
     if (this.allowedEmail(email)) {
       // At most 5 links an hour to one address.
       const key = `sent:${email}`
       const sent = ((await this.ctx.storage.get<number[]>(key)) ?? []).filter((t) => t > Date.now() - 3_600_000)
       if (sent.length < 5) {
         const t = token()
-        await this.ctx.storage.put(`login:${await hash(t)}`, { email, exp: Date.now() + LOGIN_MS, ...(next.startsWith('/_remote/link?') ? { next } : {}) } satisfies Login)
+        // A code too, for the app on an iPhone's home screen: Mail opens links in Safari, which keeps its own cookies.
+        const code = String(crypto.getRandomValues(new Uint32Array(1))[0] % 1_000_000).padStart(6, '0')
+        const login = `login:${await hash(t)}`
+        const exp = Date.now() + LOGIN_MS
+        await this.ctx.storage.put(login, { email, exp, ...(next ? { next } : {}) } satisfies Login)
+        await this.ctx.storage.put(`code:${email}`, { code: await hash(code), exp, tries: 0, login, ...(next ? { next } : {}) } satisfies Code)
         await this.ctx.storage.put(key, [...sent, Date.now()])
-        await this.mail(email, 'Sign in to Codinger', `Open this link to sign in to Codinger on web.codinger.app:\n\n${url.origin}/_remote/verify?t=${t}\n\nIt works once, for 15 minutes. If you did not ask for it, do nothing.`)
+        await this.mail(email, `Codinger sign-in code: ${code}`, `Your Codinger sign-in code is ${code}\n\nType it on the sign-in page. Or open this link to sign in to web.codinger.app in your browser:\n\n${url.origin}/_remote/verify?t=${t}\n\nThe code and the link work once, for 15 minutes. If you did not ask for them, do nothing.`)
       }
     }
-    return page('Check your email', '<p>If the address is on the list, a link to sign in is on the way. It works for 15 minutes.</p>')
+    return codePage(email, next ?? '')
+  }
+
+  // The code from the email, typed on the page that asked for it.
+  private async verifyCode(req: Request): Promise<Response> {
+    const form = await req.formData()
+    const email = String(form.get('email') ?? '').trim().toLowerCase()
+    const next = safeNext(String(form.get('next') ?? '')) ?? ''
+    const key = `code:${email}`
+    const c = this.allowedEmail(email) ? await this.ctx.storage.get<Code>(key) : undefined
+    if (!c || c.exp < Date.now() || c.tries >= CODE_TRIES) {
+      if (c) await this.ctx.storage.delete([key, c.login])
+      return page('Code expired', `<p>This code is used or too old. <a href="/_remote/login${next ? `?next=${encodeURIComponent(next)}` : ''}">Ask for a new one</a>.</p>`, 400)
+    }
+    if (c.code !== await hash(String(form.get('code') ?? '').replace(/\D/g, ''))) {
+      await this.ctx.storage.put(key, { ...c, tries: c.tries + 1 } satisfies Code)
+      return codePage(email, next, c.tries + 1 >= CODE_TRIES ? 'That code is wrong, and this was the last try. Ask for a new one.' : 'That code is wrong. Try again.')
+    }
+    await this.ctx.storage.delete([key, c.login])
+    return await this.startSession(email, c.next)
   }
 
   // A POST from the page the link opens, so a mail scanner that opens links does not use it up.
@@ -185,9 +220,16 @@ export class Hub extends DurableObject<Env> {
     const login = await this.ctx.storage.get<Login>(key)
     await this.ctx.storage.delete(key)
     if (!login || login.exp < Date.now()) return page('Link expired', '<p>This link is used or too old. <a href="/_remote/login">Ask for a new one</a>.</p>', 400)
+    // The code in the same email stops working too.
+    const c = await this.ctx.storage.get<Code>(`code:${login.email}`)
+    if (c?.login === key) await this.ctx.storage.delete(`code:${login.email}`)
+    return await this.startSession(login.email, login.next)
+  }
+
+  private async startSession(email: string, next?: string): Promise<Response> {
     const s = token()
-    await this.ctx.storage.put(`session:${await hash(s)}`, { email: login.email, exp: Date.now() + SESSION_DAYS * 86_400_000 } satisfies Session)
-    return new Response(null, { status: 303, headers: { location: login.next ?? '/', 'set-cookie': `${COOKIE}=${s}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${SESSION_DAYS * 86_400}` } })
+    await this.ctx.storage.put(`session:${await hash(s)}`, { email, exp: Date.now() + SESSION_DAYS * 86_400_000 } satisfies Session)
+    return new Response(null, { status: 303, headers: { location: next ?? '/', 'set-cookie': sessionCookie(s) } })
   }
 
   private async logout(req: Request): Promise<Response> {
@@ -406,7 +448,11 @@ ${again ? `<p>A machine with this name is connected already. It will be disconne
     const [, , name, ...rest] = url.pathname.split('/')
     // A browser needs its session and this site as the origin; a machine, its token.
     const from = await this.machineOf(req)
-    if (!from && (!await this.session(req) || !sameOrigin(req, url))) return json({ error: 'Not signed in' }, 401)
+    if (!from && (!await this.session(req) || !sameOrigin(req, url))) {
+      // The app on a home screen opens /m/<name>/: show it the sign-in page, not an error.
+      if (req.method === 'GET' && req.headers.get('sec-fetch-dest') === 'document') return new Response(null, { status: 303, headers: { location: `/_remote/login?next=${encodeURIComponent(url.pathname + url.search)}` } })
+      return json({ error: 'Not signed in' }, 401)
+    }
     const machine = this.socket(name)
     if (!machine) return json({ error: `${name} is not connected` }, 502)
     const path = '/' + rest.join('/') + url.search
@@ -698,5 +744,11 @@ footer a { color: var(--muted); }
 <footer><a href="https://codinger.app">codinger.app</a></footer></html>`, { status, headers: { 'content-type': 'text/html; charset=utf-8' } })
 }
 
-const loginPage = (next: string) => page('Sign in', `<p class="muted">We email you a link to sign in. It works once, for 15 minutes.</p><form method="post"><input type="hidden" name="next" value="${esc(next)}"><p><input type="email" name="email" placeholder="Your email address" autocomplete="email" required autofocus></p><button>Email me a link</button></form>`)
+const sessionCookie = (s: string) => `${COOKIE}=${s}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${SESSION_DAYS * 86_400}`
+// Where the browser may go after it signs in: a page on this site only.
+const safeNext = (n: string) => /^\/(m\/[a-z0-9-]{1,40}\/|_remote\/link\?)/.test(n) ? n : undefined
+
+const loginPage = (next: string) => page('Sign in', `<p class="muted">We email you a code and a link to sign in. They work once, for 15 minutes.</p><form method="post"><input type="hidden" name="next" value="${esc(next)}"><p><input type="email" name="email" placeholder="Your email address" autocomplete="email" required autofocus></p><button>Email me a code</button></form>`)
+// The same answer for any address, so it tells nobody which ones are on the list.
+const codePage = (email: string, next: string, error = '') => page('Check your email', `${error ? `<p><b>${esc(error)}</b></p>` : '<p>If the address is on the list, a code and a link to sign in are on the way. They work for 15 minutes.</p>'}<form method="post" action="/_remote/code"><input type="hidden" name="email" value="${esc(email)}"><input type="hidden" name="next" value="${esc(next)}"><p><input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]{6,7}" maxlength="7" placeholder="6-digit code" required autofocus></p><button>Sign in</button></form><p class="muted" style="margin-top: 1rem">Or open the link in the email to sign in on that browser.</p>`)
 const verifyPage = (t: string) => page('Sign in', `<p class="muted">Click to finish signing in on this browser.</p><form method="post"><input type="hidden" name="t" value="${esc(t)}"><button autofocus>Sign in</button></form>`)

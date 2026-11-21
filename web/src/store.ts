@@ -339,6 +339,10 @@ export async function uploadFile(file: File, dir: string, machine?: string): Pro
   return j.name
 }
 
+// The sign-in page on web.codinger.app. On a machine's page (the app on a home screen opens one),
+// it comes back to that page.
+const signIn = () => location.pathname.startsWith('/m/') ? `/_remote/login?next=${encodeURIComponent(location.pathname + location.search)}` : '/_remote/login'
+
 // Whether this page is web.codinger.app (and who you are there), once start() asks.
 let whoami: Promise<{ web?: boolean; email?: string | null }> | null = null
 
@@ -349,7 +353,7 @@ export async function start() {
     .then((who) => { state.web = !!who.web; return who })
   const who = await whoami
   if (who.web) {
-    if (!who.email) { location.href = '/_remote/login'; return }
+    if (!who.email) { location.href = signIn(); return }
     state.email = who.email
   } else {
     state.machines[LOCAL] = blank(LOCAL)
@@ -389,7 +393,7 @@ export async function refreshMachines() {
   if (!state.web && !state.machines[LOCAL]?.remote?.linked) known = []
   else {
     const r = await fetch(state.web ? '/_remote/machines' : '/api/remote/machines').catch(() => null)
-    if (r?.status === 401 && state.web) { location.href = '/_remote/login'; return }
+    if (r?.status === 401 && state.web) { location.href = signIn(); return }
     if (!r?.ok) return
     known = await r.json()
   }
