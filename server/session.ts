@@ -11,6 +11,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import { formatAnswer, formatArtifactNote, formatNote } from '../shared/asks.ts'
 import { formatDismissed, formatDone, itemsOf } from '../shared/blocks.ts'
+import { fromUser } from '../shared/inbox.ts'
 import { formatReview } from '../shared/review.ts'
 import { formatMail } from '../shared/mail.ts'
 import { flagArgs } from '../shared/flags.ts'
@@ -648,7 +649,7 @@ export class Session {
     let n = 0, critical = 0, reviews = 0
     for (let i = ev.length - 1; i >= 0; i--) {
       const e = ev[i]
-      if (e.t === 'user') break
+      if (fromUser(e)) break
       if (e.t === 'assistant') for (const b of e.blocks) if (b.type === 'text') for (const it of itemsOf(b.text)) { n++; if (it.kind === 'consider' && it.critical) critical++; if (it.kind === 'review') reviews++ }
     }
     return { pendingAsks: n, pendingCritical: critical, pendingReviews: reviews }

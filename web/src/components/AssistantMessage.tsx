@@ -898,7 +898,7 @@ function QuestionCard({ c, ask, compact, block }: { c: Ctx; ask: Ask; compact?: 
           <div className="ask-q" {...title} dangerouslySetInnerHTML={{ __html: question }} />
           <AsideMark sid={c.sid} itemKey={askKey} status={status} />
         </div>
-        {(status === 'live' || (state.share && !fold.folded)) && ask.options.length > 0 && <div className="ask-options">{ask.options.map((o) => <span key={o} className="chip static">{o}</span>)}</div>}
+        {(status === 'live' || status === 'skipped' || (state.share && !fold.folded)) && ask.options.length > 0 && <div className="ask-options">{ask.options.map((o) => <span key={o} className="chip static">{o}</span>)}</div>}
       </div>
     )
   }

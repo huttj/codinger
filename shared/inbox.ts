@@ -7,13 +7,18 @@ import type { Event, InboxItem, Part } from './types.ts'
 
 export type OpenItem = Item & { key: string }
 
+// A message from the user or the lead. Codinger's own notes (a task ended, the
+// server stopped), autopilot's "go on" and messages from other sessions are
+// not: the questions before them stay open, for the user to answer later.
+export const fromUser = (e: Event): boolean => e.t === 'user' && e.from !== 'codinger' && e.from !== 'autopilot' && e.from !== 'mail'
+
 // Questions and items in Claude's text since the user last spoke, keyed like
 // the browser keys them ("<seq>.<block>:<id>").
 export function openItemsOf(events: Event[]): OpenItem[] {
   const out: OpenItem[] = []
   for (let i = events.length - 1; i >= 0; i--) {
     const e = events[i]
-    if (e.t === 'user') break
+    if (fromUser(e)) break
     if (e.t !== 'assistant' || e.synthetic) continue
     const here: OpenItem[] = []
     e.blocks.forEach((b, j) => { if (b.type === 'text') for (const it of itemsOf(b.text)) here.push({ ...it, key: `${e.seq}.${j}:${it.id}` }) })

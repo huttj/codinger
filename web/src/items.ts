@@ -4,6 +4,7 @@
 import { useMemo } from 'react'
 import type { Event, Part } from '../../shared/types.ts'
 import { itemsOf, type Item } from '../../shared/blocks.ts'
+import { fromUser } from '../../shared/inbox.ts'
 import { draftsOf, hasContent, inboxOf, useStore } from './store.ts'
 import { reviewDone } from './review.ts'
 
@@ -56,8 +57,7 @@ export function draftStatus(sid: string, key: string, critical = false): ItemSta
 }
 
 export function trackItems(sid: string, events: Event[], fold: ItemFold): TrackedItem[] {
-  // Autopilot's "go on" and messages from other sessions leave the questions before them open, for you to answer later.
-  const lastUser = events.findLastIndex((e) => e.t === 'user' && e.from !== 'autopilot' && e.from !== 'mail')
+  const lastUser = events.findLastIndex(fromUser)
   const out: TrackedItem[] = []
   events.forEach((e, idx) => {
     if (e.t !== 'assistant' || e.synthetic) return
