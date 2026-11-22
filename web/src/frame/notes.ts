@@ -154,21 +154,20 @@ export function startNotes() {
   // Comment mode. Codinger keeps it (it shows on the pane's button) and says when it changes.
   let mode = false
   const commenting = (e: MouseEvent | KeyboardEvent) => mode || e.altKey
-  // A click waits a moment: a double click selects a word, and that comment wins.
-  let wait = 0, downAt = { x: 0, y: 0 }, altAt = 0
+  // A click starts its comment at once. A double click then selects a word, and the comment on
+  // the word takes the place of the empty one (Codinger keeps one empty comment at a time).
+  let downAt = { x: 0, y: 0 }, altAt = 0
   addEventListener('pointerdown', (e) => { downAt = { x: e.clientX, y: e.clientY }; altAt = 0 }, true)
-  addEventListener('mouseup', (e) => { const on = commenting(e); setTimeout(() => { if (on && startOnText()) clearTimeout(wait) }, 0) }, true)
+  addEventListener('mouseup', (e) => { const on = commenting(e); setTimeout(() => { if (on) startOnText() }, 0) }, true)
   addEventListener('click', (e) => {
-    clearTimeout(wait)
     if (!e.isTrusted || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || (touched && !mode) || !commenting(e)) return
     if (Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) > 4) return
     const el = markAt(e.target as Element, true)
     const hit = markHit(e.clientX, e.clientY, el)
     if (hit) { handBack(); send({ t: 'open', id: hit }); return }
     if (!el) return
-    wait = window.setTimeout(() => { if (!textTarget()) startOn(el) }, 250)
+    if (!textTarget()) startOn(el)
   }, true)
-  addEventListener('dblclick', () => clearTimeout(wait), true)
   // In it the page gets no presses or clicks: these listeners come after this script's own and before the page's.
   for (const t of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click', 'dblclick', 'auxclick', 'contextmenu'] as const) {
     addEventListener(t, (e) => { if (commenting(e) && !isOurs(e.target) && e.isTrusted) { e.stopImmediatePropagation(); if (t === 'click' || t === 'auxclick') e.preventDefault() } }, true)
@@ -182,12 +181,19 @@ export function startNotes() {
   }, true)
   addEventListener('keyup', (e) => { if (e.key === 'Alt' && altAt && performance.now() - altAt < 400) send({ t: 'mode', on: !mode }); altAt = 0 }, true)
 
-  // While you comment, the mark under the pointer has a dashed outline.
+  // While you comment, the mark under the pointer has a light box with a thin border. The box
+  // moves to the next mark and takes its size (CSS transitions); it fades in where it first shows.
   let pick: HTMLElement | null = null
   const showPick = (el: Element | null) => {
-    if (!el) { if (pick) pick.style.display = 'none'; return }
+    if (!el) { pick?.classList.remove('on'); return }
     if (!pick?.isConnected) { pick = document.createElement('div'); pick.className = 'cd-pick'; ensureLayer().appendChild(pick) }
+    const shown = pick.classList.contains('on')
+    if (!shown) pick.classList.add('jump')
     place(pick, el.getBoundingClientRect(), clipOf(el))
+    // A mark out of view: the box fades out where it is.
+    if (pick.style.display === 'none') { pick.style.display = 'block'; pick.classList.remove('on', 'jump'); return }
+    if (!shown) { void pick.offsetWidth; pick.classList.remove('jump') }
+    pick.classList.add('on')
   }
   addEventListener('mousemove', (e) => showPick(commenting(e) && !isOurs(e.target) ? markAt(e.target as Element, true) : null), { capture: true, passive: true })
   addEventListener('keyup', (e) => { if (e.key === 'Alt' && !mode) showPick(null) }, true)
@@ -229,7 +235,9 @@ export function startNotes() {
       [${UI}] .cd-box{position:fixed;border-radius:4px;background:rgba(255,196,0,.12)}
       [${UI}] .cd-box.sent{background:rgba(255,196,0,.08)}
       [${UI}] .cd-box.focus{background:rgba(255,196,0,.24);box-shadow:inset 0 0 0 2px rgba(240,180,0,.95)}
-      [${UI}] .cd-pick{position:fixed;display:none;border-radius:4px;outline:2px dashed rgba(240,160,0,.95);outline-offset:-2px}`
+      [${UI}] .cd-pick{position:fixed;box-sizing:border-box;border-radius:5px;border:1.5px solid rgba(232,168,0,.9);background:rgba(255,200,0,.1);opacity:0;transition:left .14s cubic-bezier(.2,.8,.2,1),top .14s cubic-bezier(.2,.8,.2,1),width .14s cubic-bezier(.2,.8,.2,1),height .14s cubic-bezier(.2,.8,.2,1),opacity .12s}
+      [${UI}] .cd-pick.on{opacity:1}
+      [${UI}] .cd-pick.jump{transition:opacity .12s}`
     layer.appendChild(css)
     document.documentElement.appendChild(layer)
     return layer
