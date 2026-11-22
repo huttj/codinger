@@ -80,7 +80,7 @@ meter.poll()
 setInterval(meter.poll, 60_000).unref()
 costs.start()
 usageLedger.start()
-let usage: Usage = { ...meter.last(), rate: meter.rate() }
+let usage: Usage = { ...meter.last(), rate: costs.bestRate() }
 const sockets = new Set<WebSocket>()
 // Slash commands differ by directory (project skills), so keep each session's
 // list, and the last one seen for sessions that haven't started yet.
@@ -245,7 +245,7 @@ const hooks: Hooks = {
   delta: (s, text, reset) => broadcast({ type: 'delta', sessionId: s.meta.id, text, reset }),
   authFailed: () => authNeeded(),
   truncate: (s, seq) => { broadcast({ type: 'truncate', sessionId: s.meta.id, seq }); metaChanged() },
-  usage: (u) => { meter.limit(u); costs.limit(u); usage = { ...u, rate: meter.rate() }; broadcast({ type: 'usage', usage }) },
+  usage: (u) => { meter.limit(u); costs.limit(u); usage = { ...u, rate: costs.bestRate() }; broadcast({ type: 'usage', usage }) },
   commands: (s, list) => {
     commands.set(s.meta.id, list)
     if (s.meta.kind === 'worker') { lastCommands = list; fs.writeFile(COMMANDS_FILE, JSON.stringify(list), () => {}) }
@@ -1275,7 +1275,7 @@ async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL
     if (id === 'ledger') {
       let sums: Record<string, string> | undefined
       try { sums = JSON.parse(url.searchParams.get('sums') ?? 'null') ?? undefined } catch {}
-      return send(res, 200, usageLedger.ledger(title, Number(url.searchParams.get('after')) || 0, sums))
+      return send(res, 200, { ...usageLedger.ledger(title, Number(url.searchParams.get('after')) || 0, sums), costs: costs.days(), rate: meter.rate() })
     }
     if (id === 'sync') { await usageLedger.sync(); return send(res, 200, usageLedger.reply(title)) }
     return send(res, 200, usageLedger.reply(title))

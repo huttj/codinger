@@ -7,20 +7,26 @@ import { useEffect, useMemo, useState } from 'react'
 import { api, changed, currentMachine, state, useStore } from '../store.ts'
 import { PLANS, cents, daysAgo, daysIn, fmtDay, lastMonth, lastWeek, money, prevMonth, prevWeek, review, today, totals, weekOf, type CostsReply, type Period } from '../../../shared/costs.ts'
 import { XIcon } from './Icons.tsx'
+import { timeAgo } from '../util.ts'
 import { UsageAudit, dayTotals, useUsage } from './UsageAudit.tsx'
 import { ChartHead, SLOTS, WorkChart, useView, util, type Totals } from './CostChart.tsx'
 
 // One copy for the banner and the page, of the current machine, read again every half hour.
+// A read that fails (the machine is off, or the hub lost it for a moment) tries again in 15 seconds.
 let costs: CostsReply | null = null
 let costsOf = ''
+let costsErr: string | null = null
 let loading: Promise<void> | null = null
 let readAt = 0
+let retry: ReturnType<typeof setTimeout> | undefined
 function load(force = false) {
   const m = currentMachine()
-  if (m !== costsOf) { costs = null; costsOf = m; readAt = 0; loading = null }
+  if (m !== costsOf) { costs = null; costsErr = null; costsOf = m; readAt = 0; loading = null }
   if (loading || (!force && Date.now() - readAt < 30 * 60_000)) return loading
+  clearTimeout(retry)
   const p: Promise<void> = api<CostsReply>('/api/costs', 'GET', undefined, m)
-    .then((c) => { if (m === costsOf && c.days) { costs = c; readAt = Date.now() } }).catch(() => {})
+    .then((c) => { if (m === costsOf && c.days) { costs = c; costsErr = null; readAt = Date.now() } })
+    .catch((e: Error) => { if (m !== costsOf) return; costsErr = e.message; if (!costs) retry = setTimeout(() => { if (currentMachine() === m) void load(true) }, 15_000) })
     .finally(() => { if (loading === p) loading = null; changed() })
   return loading = p
 }
@@ -88,7 +94,7 @@ export function CostPanel() {
   const [payView, setPayView] = useView('pay')
   const u = useUsage()
   const work = useMemo(() => dayTotals(u), [u])
-  if (!c) return <div className="muted">Reading your usage…</div>
+  if (!c) return <div className="muted">{costsErr ? `Codinger could not read the costs of ${currentMachine() || 'this machine'} (${costsErr}). It tries again in 15 seconds.` : 'Reading your usage…'}</div>
   const price = priceOf(c)
   const tier = tierOf(c)
   const rate = c.rate
@@ -133,6 +139,7 @@ export function CostPanel() {
           </tr>)}</tbody>
         </table>}
         {c.scanning && <p className="muted cost-note">Codinger is still reading your transcripts. The numbers will go up.</p>}
+        {!!c.others?.length && <p className="muted cost-note">The numbers include your other {c.others.length === 1 ? 'machine' : 'machines'}: {c.others.map((o) => `${o.label ?? o.machine}${o.at ? ` (read ${timeAgo(o.at)})` : ''}`).join(', ')}. Each machine reads the others every 30 minutes.</p>}
         {c.since && <p className="muted cost-note">The record starts on {fmtDay(c.since)}. Claude Code deletes transcripts after 30 days, so Codinger keeps its own record and a copy of the transcripts.</p>}
       </div>}
 

@@ -316,6 +316,9 @@ export function ledger(title: (codingerId: string) => string | null, after = 0, 
   return { v: 1, machine: r.name, ...(r.label ? { label: r.label } : {}), at, upTo, after, sums, ...(repaired.length ? { repaired } : {}), since: Object.keys(saved.ran).sort()[0] ?? null, worked: days(saved.worked), ran: days(saved.ran), convs: [...by.values()] }
 }
 
+// The last copy of each other machine's ledger.
+export const others = () => [...synced.values()].filter((l) => l.machine !== remoteStatus().name)
+
 export function reply(title: (codingerId: string) => string | null): UsageReply {
   const own = ledger(title)
   const others = [...synced.values()].filter((l) => l.machine !== own.machine)

@@ -22,6 +22,8 @@ export type Plan = { tier: string; label: string; usd: number; mult: number; yea
 export type CostsReply = {
   plan: Plan | null; days: Record<string, CostDay>; rate: Usage['rate']; extra: Extra | null; extraMonths: Record<string, number>
   scanning: boolean; since: string | null
+  // The other machines whose days are in days (their synced ledgers, server/usage.ts), and when each copy was read.
+  others?: { machine: string; label?: string; at: number | null }[]
 }
 
 // List prices in US dollars a month (year: paid yearly, if the plan can be), as of

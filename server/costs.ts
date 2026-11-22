@@ -22,7 +22,7 @@ import { costOf } from '../shared/prices.ts'
 import { PLANS, dayKey, type CostDay, type CostsReply, type Extra, type Plan } from '../shared/costs.ts'
 import type { Usage } from '../shared/types.ts'
 import { isPrompt, onCount, rate, startOffsets } from './meter.ts'
-import { surfaces } from './usage.ts'
+import { others, surfaces } from './usage.ts'
 
 const FILE = path.join(DATA, 'costs.json')
 const CONFIG = path.join(process.env.CLAUDE_CONFIG_DIR ?? os.homedir(), '.claude.json')
@@ -47,15 +47,18 @@ export function days(): Record<string, CostDay> {
   const out: Record<string, CostDay> = {}
   for (const k of new Set([...Object.keys(base), ...Object.keys(live)])) {
     const a = base[k] ?? blank(), b = live[k]
-    if (!b) { out[k] = a; continue }
-    const models = { ...a.models }
-    for (const m in b.models) models[m] = (models[m] ?? 0) + b.models[m]
-    out[k] = {
-      usd: a.usd + b.usd, prompts: a.prompts + b.prompts, models, hours: a.hours.map((h, i) => h + b.hours[i]),
-      ...peaks(a, b),
-    }
+    out[k] = b ? join(a, b) : a
   }
   return out
+}
+// Two counts of one day: spend and prompts added, the limit peaks the higher of the two.
+function join(a: CostDay, b: CostDay): CostDay {
+  const models = { ...a.models }
+  for (const m in b.models) models[m] = (models[m] ?? 0) + b.models[m]
+  return {
+    usd: a.usd + b.usd, prompts: a.prompts + b.prompts, models, hours: a.hours.map((h, i) => h + (b.hours[i] ?? 0)),
+    ...peaks(a, b),
+  }
 }
 const peaks = (a: CostDay, b: CostDay) => ({
   ...(a.five != null || b.five != null ? { five: Math.max(a.five ?? 0, b.five ?? 0) } : {}),
@@ -171,10 +174,25 @@ async function fetchExtra() {
   } catch {}
 }
 
+// This machine's days with those of your other machines (their synced ledgers,
+// server/usage.ts), so each machine shows all of your work. A machine that is
+// off counts with its last copy.
 export async function reply(): Promise<CostsReply> {
   await fetchExtra()
-  const d = days(), keys = Object.keys(d).sort()
-  return { plan: plan(), days: d, rate: rate(), extra: saved.extra ?? null, extraMonths: saved.extraMonths ?? {}, scanning, since: keys[0] ?? null }
+  const d = days(), ls = others().filter((l) => l.costs)
+  for (const l of ls) for (const [k, x] of Object.entries(l.costs!)) d[k] = d[k] ? join(d[k], x) : x
+  const keys = Object.keys(d).sort()
+  return {
+    plan: plan(), days: d, rate: bestRate(), extra: saved.extra ?? null, extraMonths: saved.extraMonths ?? {}, scanning, since: keys[0] ?? null,
+    others: ls.map((l) => ({ machine: l.machine, ...(l.label ? { label: l.label } : {}), at: l.check?.at ?? null })),
+  }
+}
+
+// The limits in dollars: the estimate of the machine with the most measurements,
+// this one or another. The limits are your account's, so any machine's estimate fits.
+export function bestRate(): NonNullable<Usage['rate']> {
+  const all = [rate(), ...others().map((l) => l.rate).filter((r) => r != null)].sort((a, b) => b.pairs - a.pairs)
+  return { fiveHour: all.find((r) => r.fiveHour != null)?.fiveHour, sevenDay: all.find((r) => r.sevenDay != null)?.sevenDay, pairs: all[0].pairs }
 }
 
 export function start() {

@@ -8,6 +8,9 @@
 // project is a git repository (a worktree counts for its main repository),
 // else the first two folders under your home folder (one for a hidden folder).
 
+import type { CostDay } from './costs.ts'
+import type { Usage } from './types.ts'
+
 export type Tok = { calls: number; input: number; w5: number; w1h: number; read: number; out: number; usd: number }
 export const noTok = (): Tok => ({ calls: 0, input: 0, w5: 0, w1h: 0, read: 0, out: 0, usd: 0 })
 export function addTok(a: Tok, b: Tok) {
@@ -36,6 +39,10 @@ export type Ledger = {
   worked: Record<string, Record<string, Tok>>     // day → project worked on → tokens
   ran: Record<string, Record<string, Tok>>        // day → folder the conversation ran in → tokens
   convs: UsageConv[]
+  // The machine's cost record (server/costs.ts days) and its estimate of the limits in dollars
+  // (server/meter.ts rate). Whole each time; a machine from before November 2026 sends neither.
+  costs?: Record<string, CostDay>
+  rate?: Usage['rate']
 }
 // Your weekly limit by product, as claude.ai reports it (the endpoint Claude
 // Code's /usage reads): day → product key → the share of a week's limit it
