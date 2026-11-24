@@ -17,6 +17,11 @@ function* pastes(text: string) {
   }
 }
 
+// A paste longer than this (about 10,000 tokens) goes into the session's folder as a file in
+// .codinger/pastes, and the message names the file as it names an attached file. Claude then
+// reads only the parts it needs, and the message shows what Claude got.
+export const isFilePaste = (text: string) => text.length > 40_000
+
 // A paste this long or longer becomes a pill.
 export const isLongPaste = (text: string) => text.length >= 1500 || text.split('\n').length > 20
 

@@ -12,7 +12,7 @@ import { activate, enterKey, fromDom, gapKey, imageCaret, imgNode, nodeOffset, p
 import { imagesFrom, uploadImage } from '../util.ts'
 import { media, uploadFile } from '../store.ts'
 import { fileToken } from '../../../shared/files.ts'
-import { isLongPaste, pasteToken } from '../../../shared/pastes.ts'
+import { isFilePaste, isLongPaste, pasteToken } from '../../../shared/pastes.ts'
 import { ClipIcon, ImageIcon, XIcon } from './Icons.tsx'
 import { PasteDialog } from './Paste.tsx'
 
@@ -231,9 +231,9 @@ export function RichInput({ value, onChange, images, onImages, placeholder, auto
     }
   }
 
-  // Images go in the text as images; other files into uploadDir. Each file shows at once as a
-  // pill with a spinner where it was dropped, and goes in the text there once it is uploaded.
-  function attach(files: File[], at: Range | null) {
+  // Images go in the text as images; other files into uploadDir, or into its folder `sub`. Each file
+  // shows at once as a pill with a spinner where it was dropped, and goes in the text there once it is uploaded.
+  function attach(files: File[], at: Range | null, sub?: string) {
     const imgs = files.filter((f) => f.type.startsWith('image/'))
     const rest = uploadDir == null ? [] : files.filter((f) => !f.type.startsWith('image/'))
     if (imgs.length) void add(imgs, at)
@@ -254,14 +254,15 @@ export function RichInput({ value, onChange, images, onImages, placeholder, auto
       for (const [i, f] of rest.entries()) {
         const pill = pills[i]
         try {
-          const name = await uploadFile(f, uploadDir, machine)
+          const name = await uploadFile(f, sub ? `${uploadDir.replace(/[\\/]+$/, '')}/${sub}` : uploadDir, machine)
+          if (!name) throw new Error('no upload')
           // Its × stops it: the file is in the directory, but the text does not name it.
           if (!el.contains(pill)) continue
           const pos = nodeOffset(el, pill)
           const sel = selectionOffsets(el)
           pill.remove()
           const v = fromDom(el)
-          const t = (pos && !/\s/.test(v[pos - 1]) ? ' ' : '') + fileToken(name) + (/^\S/.test(v.slice(pos)) ? ' ' : '')
+          const t = (pos && !/\s/.test(v[pos - 1]) ? ' ' : '') + fileToken(sub ? `${sub}/${name}` : name) + (/^\S/.test(v.slice(pos)) ? ' ' : '')
           // The caret stays where it was in the text around the new name.
           const move = (o: number) => o >= pos ? o + t.length : o
           edit(v.slice(0, pos) + t + v.slice(pos), sel ? move(sel[0]) : pos + t.length, sel ? move(sel[1]) : pos + t.length)
@@ -336,6 +337,12 @@ export function RichInput({ value, onChange, images, onImages, placeholder, auto
     let t = ((html && htmlToMarkdown(html)) || e.clipboardData.getData('text/plain')).replace(/\r\n?/g, '\n')
     if (!sel || !t || composing.current) return
     e.preventDefault()
+    // A very long text goes in as a file (shared/pastes.ts). With no folder to put it in, it stays a pill.
+    if (isFilePaste(t) && uploadDir?.trim()) {
+      const stamp = new Date().toISOString().slice(0, 19).replace('T', '-').replace(/:/g, '')
+      attach([new File([t], `paste-${stamp}.txt`, { type: 'text/plain' })], rangeAt(el, sel[0]), '.codinger/pastes')
+      return
+    }
     const v = fromDom(el)
     // The pill goes in at the caret, in the line, as an image does.
     if (isLongPaste(t)) t = pasteToken(t)

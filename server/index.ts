@@ -1334,6 +1334,9 @@ async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL
     const dir = path.resolve(expandHome(url.searchParams.get('dir') ?? ''))
     const want = path.basename(url.searchParams.get('name') ?? '').replace(/[\x00-\x1f/\\:`]/g, '_').trim() || 'file'
     fs.mkdirSync(dir, { recursive: true })
+    // A folder that Codinger keeps in .codinger (long pastes, web/src/components/Inputs.tsx) stays out of git, as the notes do.
+    const ignore = path.join(dir, '.gitignore')
+    if (path.basename(path.dirname(dir)) === '.codinger' && !fs.existsSync(ignore)) fs.writeFileSync(ignore, '*\n')
     const ext = path.extname(want), stem = want.slice(0, want.length - ext.length) || want
     let name = want
     for (let n = 2; fs.existsSync(path.join(dir, name)); n++) name = `${stem} (${n})${ext}`
