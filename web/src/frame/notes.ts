@@ -81,14 +81,30 @@ export function startNotes() {
   // A block of text (a paragraph, a heading, an item, a cell) is a mark of its own, also inside a
   // larger mark: the pointer on a paragraph picks the paragraph, not the whole section around it.
   const TEXT = 'p, h1, h2, h3, h4, h5, h6, li, dt, dd, blockquote, pre, figcaption, caption, td, th'
-  // An element with other marks or blocks of text in it (a section, a card) is not a mark: a box
-  // over all of it only distracts. Its parts are marks.
+  // An element with other marks or blocks of text in it (a section) is not a mark: a box over
+  // all of it only distracts. Its parts are marks. A card is one, for the space around its parts.
   const INNER = `${MARK}, ${TEXT}`
+  const clear = (c: string) => c === 'transparent' || /^rgba\(.*,\s*0\)$/.test(c)
+  const fillBehind = (e: Element) => {
+    for (let p = e.parentElement; p; p = p.parentElement) { const c = getComputedStyle(p).backgroundColor; if (!clear(c)) return c }
+    return 'rgb(255, 255, 255)'
+  }
+  // A card: a block with an outline all round, a fill of its own or a shadow, narrower than the page.
+  const isCard = (e: Element) => {
+    const cs = getComputedStyle(e)
+    if (cs.display === 'inline' || cs.display === 'contents' || e.getBoundingClientRect().width >= document.documentElement.clientWidth - 8) return false
+    const outline = (['Top', 'Right', 'Bottom', 'Left'] as const).every((d) => parseFloat(cs[`border${d}Width`]) > 0 && cs[`border${d}Style`] !== 'none' && !clear(cs[`border${d}Color`]))
+    return outline || cs.boxShadow !== 'none' || (!clear(cs.backgroundColor) && cs.backgroundColor !== fillBehind(e))
+  }
+  const cardAround = (t: Element) => {
+    for (let e: Element | null = t; e && e !== document.body && e !== document.documentElement; e = e.parentElement) if (isCard(e)) return e
+    return null
+  }
   const markAt = (t: Element, any: boolean): Element | null => {
     if (isOurs(t) || (!any && t.closest(CONTROL))) return null
     let el = t.closest(INNER)
     if (el?.querySelector(INNER)) el = null
-    el = el ?? (t.matches(SHAPE) ? t : null) ?? (any && !t.querySelector(INNER) ? t : null)
+    el = el ?? (t.matches(SHAPE) ? t : null) ?? (any && !t.querySelector(INNER) ? t : null) ?? cardAround(t)
     return el && el !== document.body && el !== document.documentElement ? el : null
   }
   const boxOf = (rects: DOMRect[]): Box | null => {
@@ -350,7 +366,7 @@ export function startNotes() {
       [${UI}] .cd-box.sent{background:rgba(255,196,0,.08)}
       [${UI}] .cd-box.focus{background:rgba(255,196,0,.24);box-shadow:inset 0 0 0 2px rgba(240,180,0,.95)}
       [${UI}] .cd-pick{position:fixed;box-sizing:border-box;border-radius:5px;border:1.5px solid rgba(232,168,0,.9);background:rgba(255,200,0,.1);opacity:0;transition:left .14s cubic-bezier(.2,.8,.2,1),top .14s cubic-bezier(.2,.8,.2,1),width .14s cubic-bezier(.2,.8,.2,1),height .14s cubic-bezier(.2,.8,.2,1),opacity .12s}
-      [${UI}] .cd-pick.on{opacity:1} [${UI}] .cd-pick.on.word{opacity:.1}
+      [${UI}] .cd-pick.on{opacity:1} [${UI}] .cd-pick.on.word{opacity:0}
       [${UI}] .cd-pick.jump{transition:opacity .12s}`
     layer.appendChild(css)
     document.documentElement.appendChild(layer)
