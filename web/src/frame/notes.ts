@@ -6,8 +6,9 @@
 // over the frame (web/src/components/ArtifactNotes.tsx). They talk over postMessage.
 //
 // In comment mode (the pane's Comment button, or a tap on Option alone) a selection of text
-// starts a comment, and a click starts one on what it hits, the nearest mark around it (an
-// element with data-pid, aria-label or data-label) first; the page does not get the click.
+// starts a comment, and a click starts one on what it hits, the nearest mark around it (a block
+// of text such as a paragraph or a heading, or an element with data-pid, aria-label or
+// data-label) first; the page does not get the click.
 // Out of it the page gets its clicks and selections as usual, and an Option-click (Alt) or a
 // selection made with Option held starts one comment. On a touch screen a long press on a
 // mark starts one.
@@ -77,9 +78,12 @@ export function startNotes() {
   const MARK = '[data-pid], [aria-label], [data-label]'
   const SHAPE = 'rect, circle, ellipse, path, polygon, polyline, line, img, canvas, video'
   const CONTROL = 'a, button, input, select, textarea, label, summary, option, [contenteditable], [role="button"], [role="link"], [role="tab"], [role="checkbox"], [role="slider"]'
+  // A block of text (a paragraph, a heading, an item, a cell) is a mark of its own, also inside a
+  // larger mark: the pointer on a paragraph picks the paragraph, not the whole section around it.
+  const TEXT = 'p, h1, h2, h3, h4, h5, h6, li, dt, dd, blockquote, pre, figcaption, caption, td, th'
   const markAt = (t: Element, any: boolean): Element | null => {
     if (isOurs(t) || (!any && t.closest(CONTROL))) return null
-    const el = t.closest(MARK) ?? (t.matches(SHAPE) ? t : null) ?? (any ? t : null)
+    const el = t.closest(`${MARK}, ${TEXT}`) ?? (t.matches(SHAPE) ? t : null) ?? (any ? t : null)
     return el && el !== document.body && el !== document.documentElement ? el : null
   }
   const boxOf = (rects: DOMRect[]): Box | null => {
