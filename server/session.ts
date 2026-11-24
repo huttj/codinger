@@ -17,6 +17,7 @@ import { formatMail } from '../shared/mail.ts'
 import { flagArgs } from '../shared/flags.ts'
 import { mediaTypeOf, splitImages, withoutImages } from '../shared/images.ts'
 import { splitPastes } from '../shared/pastes.ts'
+import { PASTES, pasteForClaude } from './pastes.ts'
 import type { Block, Event, Part, PermissionMode, SessionMeta, Status, Usage } from '../shared/types.ts'
 import { AUTH_ERROR, CLAUDE, childEnv } from './auth.ts'
 import { entryBefore } from './history.ts'
@@ -172,6 +173,8 @@ export class Session {
       ...(m.resumeAt ? ['--resume', m.claudeSessionId, '--resume-session-at', m.resumeAt, '--fork-session']
         : m.started ? ['--resume', m.claudeSessionId] : ['--session-id', m.claudeSessionId]),
       '--append-system-prompt-file', promptFile(m.id, prompt),
+      // Pastes too long for a message are files there (server/pastes.ts).
+      '--add-dir', PASTES,
       ...args,
     ]
     if (!fs.existsSync(m.cwd)) throw new Error(`Directory not found: ${m.cwd}`)
@@ -326,9 +329,10 @@ export class Session {
       content.push({ type: 'image', source: { type: 'base64', media_type: mediaType, data: fs.readFileSync(file).toString('base64') } })
     }
     for (const p of parts) {
-      // A long paste goes to Claude as the text it was; images pasted into the text go where they sit in it.
+      // A long paste goes to Claude as the text it was, or as a file when it is too long for a message
+      // (server/pastes.ts); images pasted into the text go where they sit in it.
       for (const c of splitPastes(partText(p))) {
-        if ('paste' in c) { if (c.paste.trim()) addText(c.paste); continue }
+        if ('paste' in c) { if (c.paste.trim()) addText(pasteForClaude(c.paste)); continue }
         for (const r of splitImages(c.text)) {
           if ('url' in r) addImage(r.url, mediaTypeOf(r.url))
           else if (r.text.trim()) addText(r.text.trim())
