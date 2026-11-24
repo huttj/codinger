@@ -1572,6 +1572,9 @@ html { touch-action: manipulation; -webkit-text-size-adjust: 100%; text-size-adj
   .side-foot button.link + button.link { margin-left: 8px; }
   .side-foot button.link .icon { width: 20px; height: 20px; }
   main { padding-top: env(safe-area-inset-top); }
+  /* A solid strip behind the status bar of an iPhone. With no element fixed at the top, iOS 26
+     blurs the page under the status bar and a little below it, over the first line of a banner. */
+  body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; z-index: 24; height: env(safe-area-inset-top); background: var(--bg); pointer-events: none; }
 
   /* Banners and the head leave room for the button that shows the sidebar. */
   /* At least 48px high (and the 1px border): a banner with no buttons, "Restarting Codinger…",

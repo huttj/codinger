@@ -173,7 +173,7 @@ export class Session {
       ...(m.resumeAt ? ['--resume', m.claudeSessionId, '--resume-session-at', m.resumeAt, '--fork-session']
         : m.started ? ['--resume', m.claudeSessionId] : ['--session-id', m.claudeSessionId]),
       '--append-system-prompt-file', promptFile(m.id, prompt),
-      // Pastes too long for a message are files there (server/pastes.ts).
+      // Pastes too long for a message are files there when the session's folder takes no files (server/pastes.ts).
       '--add-dir', PASTES,
       ...args,
     ]
@@ -332,7 +332,7 @@ export class Session {
       // A long paste goes to Claude as the text it was, or as a file when it is too long for a message
       // (server/pastes.ts); images pasted into the text go where they sit in it.
       for (const c of splitPastes(partText(p))) {
-        if ('paste' in c) { if (c.paste.trim()) addText(pasteForClaude(c.paste)); continue }
+        if ('paste' in c) { if (c.paste.trim()) addText(pasteForClaude(c.paste, this.meta.cwd)); continue }
         for (const r of splitImages(c.text)) {
           if ('url' in r) addImage(r.url, mediaTypeOf(r.url))
           else if (r.text.trim()) addText(r.text.trim())
