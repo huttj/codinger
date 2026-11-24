@@ -188,7 +188,31 @@ export function startNotes() {
   // While you comment, the mark under the pointer has a light box with a thin border. The box
   // moves to the next mark and takes its size (CSS transitions); it fades in where it first shows.
   let pick: HTMLElement | null = null
-  const showPick = (el: Element | null) => {
+  // The word under the pointer has a faint fill too: a double click comments on it.
+  const wordAt = (x: number, y: number, el: Element) => {
+    const d = document as Document & { caretRangeFromPoint?(x: number, y: number): Range | null }
+    let c: Range | null = d.caretRangeFromPoint?.(x, y) ?? null
+    if (!c) { const p = document.caretPositionFromPoint?.(x, y); if (p) { c = document.createRange(); c.setStart(p.offsetNode, p.offset) } }
+    const n = c?.startContainer
+    if (!n || n.nodeType !== Node.TEXT_NODE || !el.contains(n) || at(n)?.closest(CONTROL)) return null
+    const t = n.textContent ?? '', w = /[\p{L}\p{N}_'’-]/u
+    let a = c!.startOffset, b = a
+    while (a > 0 && w.test(t[a - 1])) a--
+    while (b < t.length && w.test(t[b])) b++
+    if (a === b) return null
+    const r = document.createRange()
+    r.setStart(n, a); r.setEnd(n, b)
+    // The caret is the nearest one, also from the space beside a line: the pointer must be on the word.
+    return [...r.getClientRects()].some((q) => x >= q.left && x <= q.right && y >= q.top && y <= q.bottom) ? r : null
+  }
+  let word: Range | null = null
+  const showWord = (r: Range | null) => {
+    if (!('highlights' in CSS) || (r === word || (r && word && r.startContainer === word.startContainer && r.startOffset === word.startOffset && r.endOffset === word.endOffset))) return
+    word = r
+    if (r) CSS.highlights.set('cd-word', new Highlight(r)); else CSS.highlights.delete('cd-word')
+  }
+  const showPick = (el: Element | null, x = 0, y = 0, down = false) => {
+    showWord(el && !down ? wordAt(x, y, el) : null)
     if (!el) { pick?.classList.remove('on'); return }
     if (!pick?.isConnected) { pick = document.createElement('div'); pick.className = 'cd-pick'; ensureLayer().appendChild(pick) }
     const shown = pick.classList.contains('on')
@@ -199,8 +223,9 @@ export function startNotes() {
     if (!shown) { void pick.offsetWidth; pick.classList.remove('jump') }
     pick.classList.add('on')
   }
-  addEventListener('mousemove', (e) => showPick(commenting(e) && !isOurs(e.target) ? markAt(e.target as Element, true) : null), { capture: true, passive: true })
+  addEventListener('mousemove', (e) => showPick(commenting(e) && !isOurs(e.target) ? markAt(e.target as Element, true) : null, e.clientX, e.clientY, e.buttons !== 0), { capture: true, passive: true })
   addEventListener('keyup', (e) => { if (e.key === 'Alt' && !mode) showPick(null) }, true)
+  document.documentElement.addEventListener('mouseleave', () => showPick(null))
   const setMode = (on: boolean) => {
     mode = on
     document.documentElement.toggleAttribute('data-codinger-commenting', on)
@@ -235,7 +260,7 @@ export function startNotes() {
     layer.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:2147483646'
     const css = document.createElement('style')
     css.textContent = `
-      ::highlight(cd-draft){background-color:rgba(255,196,0,.19)} ::highlight(cd-sent){background-color:rgba(255,196,0,.12)} ::highlight(cd-focus){background-color:rgba(255,196,0,.38)}
+      ::highlight(cd-draft){background-color:rgba(255,196,0,.19)} ::highlight(cd-sent){background-color:rgba(255,196,0,.12)} ::highlight(cd-focus){background-color:rgba(255,196,0,.38)} ::highlight(cd-word){background-color:rgba(255,190,0,.22)}
       [${UI}] .cd-box{position:fixed;border-radius:4px;background:rgba(255,196,0,.12)}
       [${UI}] .cd-box.sent{background:rgba(255,196,0,.08)}
       [${UI}] .cd-box.focus{background:rgba(255,196,0,.24);box-shadow:inset 0 0 0 2px rgba(240,180,0,.95)}
