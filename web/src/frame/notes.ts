@@ -200,6 +200,27 @@ export function startNotes() {
     const w = wordAt(e.clientX, e.clientY, el)
     if (w) startOnRange(w); else startOn(el)
   }, true)
+  // A drag selects whole words as it goes: from the word where it started to the word under the
+  // pointer. The page's own selection would fight it, so a press does not start one.
+  let drag: Range | null = null
+  addEventListener('mousedown', (e) => {
+    drag = null
+    if (!e.isTrusted || e.button !== 0 || e.shiftKey || touched || !commenting(e) || isOurs(e.target)) return
+    const c = caretAt(e.clientX, e.clientY)
+    if (!c) return
+    e.preventDefault()
+    window.focus()
+    getSelection()?.removeAllRanges()
+    drag = wordIn(c.n, c.o)
+    if (!drag) { drag = document.createRange(); drag.setStart(c.n, c.o) }
+  }, true)
+  const dragTo = (x: number, y: number) => {
+    const c = caretAt(x, y), sel = getSelection()
+    if (!drag || !c || !sel) return
+    const w = wordIn(c.n, c.o)
+    if (drag.comparePoint(c.n, c.o) < 0) sel.setBaseAndExtent(drag.endContainer, drag.endOffset, w?.startContainer ?? c.n, w?.startOffset ?? c.o)
+    else sel.setBaseAndExtent(drag.startContainer, drag.startOffset, w?.endContainer ?? c.n, w?.endOffset ?? c.o)
+  }
   // In it the page gets no presses or clicks: these listeners come after this script's own and before the page's.
   for (const t of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click', 'dblclick', 'auxclick', 'contextmenu'] as const) {
     addEventListener(t, (e) => { if (commenting(e) && !isOurs(e.target) && e.isTrusted) { e.stopImmediatePropagation(); if (t === 'click' || t === 'auxclick') e.preventDefault() } }, true)
@@ -223,21 +244,38 @@ export function startNotes() {
   // moves to the next mark and takes its size (CSS transitions); it fades in where it first shows.
   let pick: HTMLElement | null = null
   // The word under the pointer has a faint fill, and the box fades almost out: a click comments on the word.
-  const wordAt = (x: number, y: number, el: Element) => {
+  // The text caret nearest a point, in the page's text.
+  const caretAt = (x: number, y: number) => {
     const d = document as Document & { caretRangeFromPoint?(x: number, y: number): Range | null }
     let c: Range | null = d.caretRangeFromPoint?.(x, y) ?? null
     if (!c) { const p = document.caretPositionFromPoint?.(x, y); if (p) { c = document.createRange(); c.setStart(p.offsetNode, p.offset) } }
     const n = c?.startContainer
-    if (!n || n.nodeType !== Node.TEXT_NODE || !el.contains(n) || at(n)?.closest(CONTROL)) return null
+    if (!n || n.nodeType !== Node.TEXT_NODE || isOurs(at(n)) || at(n)?.closest(CONTROL)) return null
+    return { n, o: c!.startOffset }
+  }
+  // The word around offset o of text node n; null between words.
+  const wordIn = (n: Node, o: number) => {
     const t = n.textContent ?? ''
-    let a = c!.startOffset, b = a
+    let a = o, b = o
     while (a > 0 && WORD.test(t[a - 1])) a--
     while (b < t.length && WORD.test(t[b])) b++
     if (a === b) return null
     const r = document.createRange()
     r.setStart(n, a); r.setEnd(n, b)
+    return r
+  }
+  const hits = (r: Range, x: number, y: number, pad: number) => [...r.getClientRects()].some((q) => q.width && x >= q.left && x <= q.right && y >= q.top - pad && y <= q.bottom + pad)
+  const wordAt = (x: number, y: number, el: Element) => {
+    const c = caretAt(x, y)
+    const r = c && el.contains(c.n) ? wordIn(c.n, c.o) : null
     // The caret is the nearest one, also from the space beside a line: the pointer must be on the word.
-    return [...r.getClientRects()].some((q) => x >= q.left && x <= q.right && y >= q.top && y <= q.bottom) ? r : null
+    return r && hits(r, x, y, 0) ? r : null
+  }
+  // The pointer on the lines of text of el, also between words and between lines: the box stays faint there.
+  const inText = (x: number, y: number, el: Element) => {
+    const r = document.createRange()
+    r.selectNodeContents(el)
+    return hits(r, x, y, 5)
   }
   let word: Range | null = null
   const showWord = (r: Range | null) => {
@@ -246,10 +284,11 @@ export function startNotes() {
     if (r) CSS.highlights.set('cd-word', new Highlight(r)); else CSS.highlights.delete('cd-word')
   }
   const showPick = (el: Element | null, x = 0, y = 0, down = false) => {
-    showWord(el && !down ? wordAt(x, y, el) : null)
+    const w = el && !down ? wordAt(x, y, el) : null
+    showWord(w)
     if (!el) { pick?.classList.remove('on'); return }
     if (!pick?.isConnected) { pick = document.createElement('div'); pick.className = 'cd-pick'; ensureLayer().appendChild(pick) }
-    pick.classList.toggle('word', !!word)
+    pick.classList.toggle('word', !!w || inText(x, y, el))
     const shown = pick.classList.contains('on')
     if (!shown) pick.classList.add('jump')
     place(pick, el.getBoundingClientRect(), clipOf(el))
@@ -266,6 +305,7 @@ export function startNotes() {
   }
   addEventListener('mousemove', (e) => {
     ptr = { x: e.clientX, y: e.clientY }
+    if (drag && e.buttons & 1) dragTo(e.clientX, e.clientY)
     showPick(commenting(e) && !isOurs(e.target) ? markAt(e.target as Element, true) : null, e.clientX, e.clientY, e.buttons !== 0)
   }, { capture: true, passive: true })
   document.documentElement.addEventListener('mouseleave', () => { ptr = null; showPick(null) })
