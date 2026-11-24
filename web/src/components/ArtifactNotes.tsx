@@ -72,8 +72,13 @@ export function ArtifactNotes({ sid, artifact, v, mtime, frame, mode, setMode }:
   // A tap on Option alone, here as in the page, turns comment mode on or off.
   useEffect(() => {
     let at = 0
-    const down = (e: KeyboardEvent) => { at = e.key === 'Alt' && !e.repeat ? performance.now() : 0 }
-    const up = (e: KeyboardEvent) => { if (e.key === 'Alt' && at && performance.now() - at < 400) setMode(!modeRef.current); at = 0 }
+    // Option held here shows the box under the pointer in the page at once, as Option held there.
+    const down = (e: KeyboardEvent) => { at = e.key === 'Alt' && !e.repeat ? performance.now() : 0; if (at) post({ t: 'alt', on: true }) }
+    const up = (e: KeyboardEvent) => {
+      if (e.key === 'Alt' && at && performance.now() - at < 400) setMode(!modeRef.current)
+      else if (e.key === 'Alt') post({ t: 'alt', on: false })
+      at = 0
+    }
     const press = () => { at = 0 }
     addEventListener('keydown', down, true); addEventListener('keyup', up, true); addEventListener('pointerdown', press, true)
     return () => { removeEventListener('keydown', down, true); removeEventListener('keyup', up, true); removeEventListener('pointerdown', press, true) }

@@ -81,9 +81,14 @@ export function startNotes() {
   // A block of text (a paragraph, a heading, an item, a cell) is a mark of its own, also inside a
   // larger mark: the pointer on a paragraph picks the paragraph, not the whole section around it.
   const TEXT = 'p, h1, h2, h3, h4, h5, h6, li, dt, dd, blockquote, pre, figcaption, caption, td, th'
+  // An element with other marks or blocks of text in it (a section, a card) is not a mark: a box
+  // over all of it only distracts. Its parts are marks.
+  const INNER = `${MARK}, ${TEXT}`
   const markAt = (t: Element, any: boolean): Element | null => {
     if (isOurs(t) || (!any && t.closest(CONTROL))) return null
-    const el = t.closest(`${MARK}, ${TEXT}`) ?? (t.matches(SHAPE) ? t : null) ?? (any ? t : null)
+    let el = t.closest(INNER)
+    if (el?.querySelector(INNER)) el = null
+    el = el ?? (t.matches(SHAPE) ? t : null) ?? (any && !t.querySelector(INNER) ? t : null)
     return el && el !== document.body && el !== document.documentElement ? el : null
   }
   const boxOf = (rects: DOMRect[]): Box | null => {
@@ -143,14 +148,37 @@ export function startNotes() {
     if (!common || isOurs(common) || common.closest('input, textarea, [contenteditable]')) return null
     return { sel, r, root: pidOf(common) ?? document.body }
   }
+  const startOnRange = (r: Range) => {
+    const root = pidOf(at(r.commonAncestorContainer)) ?? document.body
+    const quote = clip(r.toString(), 1000)
+    if (!quote) return
+    const anchor = { ...(root === document.body ? {} : elementAnchor(root)), text: { quote, nth: occurrenceOf(r, root) } }
+    delete anchor.label
+    handBack()
+    send({ t: 'new', anchor, quote, box: boxOf([...r.getClientRects()]) })
+  }
+  // A selection takes in the whole of each word it cuts at its ends.
+  const WORD = /[\p{L}\p{N}_'’-]/u
+  const wholeWords = (from: Range) => {
+    const r = from.cloneRange(), s = r.startContainer, e = r.endContainer
+    if (s.nodeType === Node.TEXT_NODE) {
+      const t = s.textContent ?? ''
+      let a = r.startOffset
+      if (a < t.length && WORD.test(t[a])) while (a > 0 && WORD.test(t[a - 1])) a--
+      r.setStart(s, a)
+    }
+    if (e.nodeType === Node.TEXT_NODE) {
+      const t = e.textContent ?? ''
+      let b = r.endOffset
+      if (b > 0 && WORD.test(t[b - 1])) while (b < t.length && WORD.test(t[b])) b++
+      r.setEnd(e, b)
+    }
+    return r
+  }
   const startOnText = () => {
     const t = textTarget()
     if (!t) return false
-    const quote = clip(t.sel.toString(), 1000)
-    const anchor = { ...(t.root === document.body ? {} : elementAnchor(t.root)), text: { quote, nth: occurrenceOf(t.r, t.root) } }
-    delete anchor.label
-    handBack()
-    send({ t: 'new', anchor, quote, box: boxOf([...t.r.getClientRects()]) })
+    startOnRange(wholeWords(t.r))
     t.sel.removeAllRanges()
     return true
   }
@@ -158,8 +186,7 @@ export function startNotes() {
   // Comment mode. Codinger keeps it (it shows on the pane's button) and says when it changes.
   let mode = false
   const commenting = (e: MouseEvent | KeyboardEvent) => mode || e.altKey
-  // A click starts its comment at once. A double click then selects a word, and the comment on
-  // the word takes the place of the empty one (Codinger keeps one empty comment at a time).
+  // A click starts its comment at once: on the word under the pointer, else on the mark.
   let downAt = { x: 0, y: 0 }, altAt = 0
   addEventListener('pointerdown', (e) => { downAt = { x: e.clientX, y: e.clientY }; altAt = 0 }, true)
   addEventListener('mouseup', (e) => { const on = commenting(e); setTimeout(() => { if (on) startOnText() }, 0) }, true)
@@ -169,8 +196,9 @@ export function startNotes() {
     const el = markAt(e.target as Element, true)
     const hit = markHit(e.clientX, e.clientY, el)
     if (hit) { handBack(); send({ t: 'open', id: hit }); return }
-    if (!el) return
-    if (!textTarget()) startOn(el)
+    if (!el || textTarget()) return
+    const w = wordAt(e.clientX, e.clientY, el)
+    if (w) startOnRange(w); else startOn(el)
   }, true)
   // In it the page gets no presses or clicks: these listeners come after this script's own and before the page's.
   for (const t of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click', 'dblclick', 'auxclick', 'contextmenu'] as const) {
@@ -179,26 +207,32 @@ export function startNotes() {
 
   // A tap on Option alone turns comment mode on or off; Escape turns it off.
   addEventListener('keydown', (e) => {
-    if (e.key === 'Alt' && !e.repeat) altAt = performance.now()
+    if (e.key === 'Alt' && !e.repeat) { altAt = performance.now(); altHeld(true) }
     else altAt = 0
     if (e.key === 'Escape' && mode) send({ t: 'mode', on: false })
   }, true)
-  addEventListener('keyup', (e) => { if (e.key === 'Alt' && altAt && performance.now() - altAt < 400) send({ t: 'mode', on: !mode }); altAt = 0 }, true)
+  // Option down shows the box under the pointer at once; Option up hides it, unless it was a tap.
+  addEventListener('keyup', (e) => {
+    const tap = e.key === 'Alt' && altAt && performance.now() - altAt < 400
+    altAt = 0
+    if (tap) send({ t: 'mode', on: !mode })
+    else if (e.key === 'Alt') altHeld(false)
+  }, true)
 
   // While you comment, the mark under the pointer has a light box with a thin border. The box
   // moves to the next mark and takes its size (CSS transitions); it fades in where it first shows.
   let pick: HTMLElement | null = null
-  // The word under the pointer has a faint fill too: a double click comments on it.
+  // The word under the pointer has a faint fill, and the box fades almost out: a click comments on the word.
   const wordAt = (x: number, y: number, el: Element) => {
     const d = document as Document & { caretRangeFromPoint?(x: number, y: number): Range | null }
     let c: Range | null = d.caretRangeFromPoint?.(x, y) ?? null
     if (!c) { const p = document.caretPositionFromPoint?.(x, y); if (p) { c = document.createRange(); c.setStart(p.offsetNode, p.offset) } }
     const n = c?.startContainer
     if (!n || n.nodeType !== Node.TEXT_NODE || !el.contains(n) || at(n)?.closest(CONTROL)) return null
-    const t = n.textContent ?? '', w = /[\p{L}\p{N}_'’-]/u
+    const t = n.textContent ?? ''
     let a = c!.startOffset, b = a
-    while (a > 0 && w.test(t[a - 1])) a--
-    while (b < t.length && w.test(t[b])) b++
+    while (a > 0 && WORD.test(t[a - 1])) a--
+    while (b < t.length && WORD.test(t[b])) b++
     if (a === b) return null
     const r = document.createRange()
     r.setStart(n, a); r.setEnd(n, b)
@@ -215,6 +249,7 @@ export function startNotes() {
     showWord(el && !down ? wordAt(x, y, el) : null)
     if (!el) { pick?.classList.remove('on'); return }
     if (!pick?.isConnected) { pick = document.createElement('div'); pick.className = 'cd-pick'; ensureLayer().appendChild(pick) }
+    pick.classList.toggle('word', !!word)
     const shown = pick.classList.contains('on')
     if (!shown) pick.classList.add('jump')
     place(pick, el.getBoundingClientRect(), clipOf(el))
@@ -223,13 +258,23 @@ export function startNotes() {
     if (!shown) { void pick.offsetWidth; pick.classList.remove('jump') }
     pick.classList.add('on')
   }
-  addEventListener('mousemove', (e) => showPick(commenting(e) && !isOurs(e.target) ? markAt(e.target as Element, true) : null, e.clientX, e.clientY, e.buttons !== 0), { capture: true, passive: true })
-  addEventListener('keyup', (e) => { if (e.key === 'Alt' && !mode) showPick(null) }, true)
-  document.documentElement.addEventListener('mouseleave', () => showPick(null))
+  // Where the pointer is, so a change of mode or of Option shows the box without a move.
+  let ptr: { x: number; y: number } | null = null
+  const pickHere = () => {
+    const t = ptr && document.elementFromPoint(ptr.x, ptr.y)
+    showPick(t && !isOurs(t) ? markAt(t, true) : null, ptr?.x, ptr?.y)
+  }
+  addEventListener('mousemove', (e) => {
+    ptr = { x: e.clientX, y: e.clientY }
+    showPick(commenting(e) && !isOurs(e.target) ? markAt(e.target as Element, true) : null, e.clientX, e.clientY, e.buttons !== 0)
+  }, { capture: true, passive: true })
+  document.documentElement.addEventListener('mouseleave', () => { ptr = null; showPick(null) })
+  // Option held, in this page or in Codinger's (which sends it here).
+  const altHeld = (on: boolean) => { if (on) pickHere(); else if (!mode) showPick(null) }
   const setMode = (on: boolean) => {
     mode = on
     document.documentElement.toggleAttribute('data-codinger-commenting', on)
-    if (!on) showPick(null)
+    if (on) pickHere(); else showPick(null)
   }
 
   // Touch: a long press on a mark starts a comment on it; a selection starts one when it stops changing.
@@ -265,7 +310,7 @@ export function startNotes() {
       [${UI}] .cd-box.sent{background:rgba(255,196,0,.08)}
       [${UI}] .cd-box.focus{background:rgba(255,196,0,.24);box-shadow:inset 0 0 0 2px rgba(240,180,0,.95)}
       [${UI}] .cd-pick{position:fixed;box-sizing:border-box;border-radius:5px;border:1.5px solid rgba(232,168,0,.9);background:rgba(255,200,0,.1);opacity:0;transition:left .14s cubic-bezier(.2,.8,.2,1),top .14s cubic-bezier(.2,.8,.2,1),width .14s cubic-bezier(.2,.8,.2,1),height .14s cubic-bezier(.2,.8,.2,1),opacity .12s}
-      [${UI}] .cd-pick.on{opacity:1}
+      [${UI}] .cd-pick.on{opacity:1} [${UI}] .cd-pick.on.word{opacity:.1}
       [${UI}] .cd-pick.jump{transition:opacity .12s}`
     layer.appendChild(css)
     document.documentElement.appendChild(layer)
@@ -340,6 +385,7 @@ export function startNotes() {
     const m = e.data
     if (m.t === 'marks') { marks = m.items ?? []; focus = m.focus ?? null; resolve(); paint() }
     else if (m.t === 'mode') setMode(!!m.on)
+    else if (m.t === 'alt') altHeld(!!m.on)
     else if (m.t === 'reveal') {
       const f = found.find((x) => x.m.id === m.id)
       const el = f?.el ?? (f?.range ? at(f.range.startContainer) : null)
