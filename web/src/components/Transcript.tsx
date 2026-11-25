@@ -399,8 +399,22 @@ const upkeep = (b: Extract<Block, { type: 'tool_use' }>) =>
   UPKEEP_TOOL.has(b.name)
   || (/^(Read|Edit|Write|MultiEdit)$/.test(b.name) && /\/\.codinger\/notes\/|\/\.claude\/projects\/[^/]+\/memory\//.test(String(b.input?.file_path ?? '')))
 
+// Ends of turns that a wake-up continues: Claude Code started the next turn with no user
+// message before it (a background agent ended). They fold with the activity around them.
+function continued(events: Event[]): Set<number> {
+  const out = new Set<number>()
+  let end: number | undefined
+  for (const e of events) {
+    if (e.t === 'user') end = undefined
+    else if (e.t === 'result') end = e.isError ? undefined : e.seq
+    else if (e.t === 'assistant' && end !== undefined) { out.add(end); end = undefined }
+  }
+  return out
+}
+
 function items(events: Event[], f: Folded, steps: Set<string>): Item[] {
   const out: Item[] = []
+  const woke = continued(events)
   for (const e of events) {
     // A task's end shows where the agent hears of it: in a message from Codinger, or folded into yours.
     if (isTaskEnd(e)) continue
@@ -417,7 +431,7 @@ function items(events: Event[], f: Folded, steps: Set<string>): Item[] {
         break
       }
       case 'tool_result': case 'permission_resolved': break
-      default: out.push({ key: `${e.seq}`, e, activity: false })
+      default: out.push({ key: `${e.seq}`, e, activity: e.t === 'result' && woke.has(e.seq) })
     }
   }
   return out
