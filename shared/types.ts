@@ -157,6 +157,8 @@ export type Part =
   | { kind: 'answer'; text: string; askKey: string; question: string; choices?: string[]; images?: ImageRef[]; draft?: 'same' | 'edited' }
   // Questions and items the user saw and set aside.
   | { kind: 'dismiss'; text: string; items: { key: string; label: string }[]; images?: ImageRef[] }
+  // Questions and items still open when the user sent anyway: not set aside, only not answered yet.
+  | { kind: 'pending'; text: string; items: { key: string; label: string }[]; images?: ImageRef[] }
   // Items the user marked done; `text` on one is a problem they hit doing it.
   // result: how a command the item asked for went.
   | { kind: 'done'; text: string; items: { key: string; label: string; text?: string; result?: string }[]; images?: ImageRef[] }

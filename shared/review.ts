@@ -19,7 +19,8 @@ const WORD: Record<LineVerdict, string> = { approve: 'approve', reject: 'reject'
 // The text the agent receives.
 export function formatReview(files: FileVerdict[], comments: LineComment[]): string {
   const out = ['**Review of your changes:**']
-  for (const d of files.filter((f) => !f.path)) out.push(`- ${d.verdict === 'approve' ? '**Go** for' : d.verdict === 'reject' ? '**No go** for' : 'A note on'} the review "${d.rel}"${d.text?.trim() ? `: ${d.text.trim().replace(/\n+/g, ' ')}` : ''}`)
+  // A note with no verdict: the review stays open, and the user decides later.
+  for (const d of files.filter((f) => !f.path)) out.push(`- ${d.verdict === 'approve' ? '**Go** for' : d.verdict === 'reject' ? '**No go** for' : 'A note, with no decision yet (the review stays open), on'} the review "${d.rel}"${d.text?.trim() ? `: ${d.text.trim().replace(/\n+/g, ' ')}` : ''}`)
   files = files.filter((f) => f.path)
   const list = (v: Verdict) => [...new Set(files.filter((f) => f.verdict === v).map((f) => `\`${f.rel}\``))].join(', ')
   if (files.some((f) => f.verdict === 'approve')) out.push(`- Approved: ${list('approve')}`)

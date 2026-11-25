@@ -161,14 +161,18 @@ export function reviewsOf(text: string): { title: string; text: string; files: s
 // critical: the agent marked the item a big deal (`critical`), shown in red.
 // parent: the item to consider it sits in, if any.
 // A <review> is an item too (r1, r2…): it waits for your decision (web/src/review.ts).
-export type Item = ({ kind: 'ask'; id: string; label: string; ask: Ask } | { kind: 'consider'; id: string; label: string; done: boolean; critical: boolean } | { kind: 'review'; id: string; label: string }) & { parent?: string }
+// again: the key of the earlier item that this one raises again (raiseItems).
+export type Item = ({ kind: 'ask'; id: string; label: string; ask: Ask } | { kind: 'consider'; id: string; label: string; done: boolean; critical: boolean } | { kind: 'review'; id: string; label: string }) & { parent?: string; again?: string }
 
 export const isCritical = (sec: Section): boolean => 'critical' in sec.attrs
 
 export const isTask = (sec: Section): boolean => 'done' in sec.attrs || sec.body.some((s) => !('text' in s) && (s.kind === 'run' || isTask(s)))
 
-export function itemsOf(text: string): Item[] {
-  const out: Item[] = []
+export const itemsOf = (text: string): Item[] => walkItems(text).map((x) => x.item)
+
+// Each item with its section (none for an ask in the older ```ask form).
+function walkItems(text: string): { item: Item; sec?: Section }[] {
+  const out: { item: Item; sec?: Section }[] = []
   let asks = 0, considers = 0, drafts = 0, reviews = 0
   const walk = (segs: Segment[], parent?: string) => {
     const under = parent ? { parent } : {}
@@ -176,16 +180,19 @@ export function itemsOf(text: string): Item[] {
       if ('text' in s) {
         const found = parseAsks(s.text, asks)
         asks += found.length
-        for (const a of found) out.push({ kind: 'ask', id: a.id, label: a.question.split('\n')[0], ask: a, ...under })
-      } else if (s.kind === 'ask' || s.kind === 'draft') {
+        for (const a of found) out.push({ item: { kind: 'ask', id: a.id, label: a.question.split('\n')[0], ask: a, ...under } })
+        continue
+      }
+      const again = s.attrs.again ? { again: s.attrs.again } : {}
+      if (s.kind === 'ask' || s.kind === 'draft') {
         const a = s.kind === 'ask' ? askOf(s, asks++) : draftOf(s, drafts++)
-        out.push({ kind: 'ask', id: a.id, label: a.question.split('\n')[0], ask: a, ...under })
+        out.push({ item: { kind: 'ask', id: a.id, label: a.question.split('\n')[0], ask: a, ...under, ...again }, sec: s })
       } else if (s.kind === 'consider') {
         const id = `c${++considers}`
-        out.push({ kind: 'consider', id, label: s.title || 'Item', done: isTask(s), critical: isCritical(s), ...under })
+        out.push({ item: { kind: 'consider', id, label: s.title || 'Item', done: isTask(s), critical: isCritical(s), ...under, ...again }, sec: s })
         walk(s.body, id)
       } else if (s.kind === 'review') {
-        out.push({ kind: 'review', id: `r${++reviews}`, label: s.title || 'Review', ...under })
+        out.push({ item: { kind: 'review', id: `r${++reviews}`, label: s.title || 'Review', ...under, ...again }, sec: s })
       } else walk(s.body, parent)
     }
   }
@@ -200,7 +207,46 @@ export function formatDone(items: { key: string; label: string; text?: string; r
   return `**Marked done:** ${items.map(one).join('; ')}${results}`
 }
 
-// The text Claude receives for items the user saw and set aside.
+// The text Claude receives for items the user saw and set aside with Dismiss. Full keys, so it can
+// raise one again (<raise item="…"/>, raiseItems).
+const listed = (items: { key: string; label: string }[]) => items.map((i) => `\`${i.key}\` (${i.label.slice(0, 120)})`).join('; ')
 export function formatDismissed(items: { key: string; label: string }[]): string {
-  return `**Dismissed, no reply:** ${items.map((i) => `\`${i.key.split(':').pop()}\` (${i.label.slice(0, 120)})`).join('; ')}`
+  return `**Dismissed, no reply:** ${listed(items)}`
+}
+
+// The text Claude receives for items still open when the user sent the message: not set aside.
+export function formatPending(items: { key: string; label: string }[]): string {
+  return `**Left open, no reply yet:** ${listed(items)}`
+}
+
+// An item of an earlier message, as the markup it had, with again="<key>" on it.
+function sectionText(s: Section): string {
+  const attrs = Object.entries(s.attrs).map(([k, v]) => ` ${k}=${v.includes('"') ? `'${v.replace(/'/g, '’')}'` : `"${v}"`}`).join('')
+  return `<${s.kind}${attrs}>\n${s.body.map((b) => 'text' in b ? b.text : sectionText(b)).join('\n')}\n</${s.kind}>`
+}
+export function itemSource(text: string, id: string, key: string): string | null {
+  const hit = walkItems(text).find((x) => x.item.id === id)
+  if (!hit) return null
+  if (hit.sec) return sectionText({ ...hit.sec, attrs: { ...hit.sec.attrs, again: key } })
+  // An ask in the older ```ask form: its text as an <ask>.
+  const a = hit.item.kind === 'ask' ? hit.item.ask : null
+  return a ? `<ask id="${a.id}" again="${key}">\n${a.question}\n${a.options.map((o) => `- ${o}`).join('\n')}\n</ask>` : null
+}
+
+// <raise item="<msg>:<id>"/> on a line of its own (outside code fences) shows an item of an earlier
+// message again: the server puts the item's markup in its place (server/session.ts). find gives the
+// text of a message by its "<seq>.<block>"; for a key it cannot find, the line says so.
+const RAISE = /^\s*<raise\s+item\s*=\s*["']?([\w.:-]+)["']?\s*\/?>\s*(?:<\/raise>\s*)?$/
+export function raiseItems(text: string, find: (msg: string) => string | undefined): string {
+  if (!text.includes('<raise')) return text
+  let fence = ''
+  return text.split('\n').map((line) => {
+    const f = /^\s*(`{3,}|~{3,})/.exec(line)?.[1]
+    if (f && (!fence || (f[0] === fence[0] && f.length >= fence.length && !line.trim().slice(f.length)))) { fence = fence ? '' : f; return line }
+    const m = fence ? null : RAISE.exec(line)
+    if (!m) return line
+    const at = m[1].indexOf(':')
+    const src = at > 0 ? find(m[1].slice(0, at)) : undefined
+    return (src != null && itemSource(src, m[1].slice(at + 1), m[1])) || `*(Codinger found no item \`${m[1]}\` to raise again.)*`
+  }).join('\n')
 }

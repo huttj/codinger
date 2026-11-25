@@ -17,7 +17,7 @@ import { holdKeyboard, marked, renderInline, renderText, served } from '../util.
 import { anchorFromRange, mediaIn, passageQuote, rangesFor, setHighlights } from '../anchoring.ts'
 import { render as renderLive } from '../mdlive.ts'
 import { addDraft, api, changed, LOCAL, localId, machineOf, dismissItem, draftsOf, markDone, removeDraft, reviveItem, setDoneText, state, uid, undismissItem, updateDraft, useStore, type AnswerDraft, type DoneDraft, type NoteDraft } from '../store.ts'
-import type { TrackedItem } from '../items.ts'
+import { revealItem, type TrackedItem } from '../items.ts'
 import { focusField, RichInput, Thumbs } from './Inputs.tsx'
 import { CheckIcon, ChevronIcon, CommentIcon, PlusIcon, TerminalIcon, UndoIcon, XIcon } from './Icons.tsx'
 import { EmojiPicker } from './EmojiPicker.tsx'
@@ -29,12 +29,16 @@ import { WithPastes } from './Paste.tsx'
 import { lastEmoji, topEmoji, usedEmoji } from '../emoji.ts'
 import { highlight } from '../highlight.ts'
 
+// An item left open when you sent anyway works as an open one: you can still reply or dismiss it.
+const asOpen = (s?: string) => !s || s === 'pending' ? 'open' : s
+
 // The mark on a completed question or item.
 const Done = ({ status }: { status: string }) =>
   status === 'answered' ? <span className="item-done ok" title="Answered"><CheckIcon size={13} /></span>
   : status === 'completed' ? <span className="item-done ok" title="Done"><CheckIcon size={13} /></span>
   // A word, not an X, which would read as the Dismiss button.
   : status === 'dismissed' ? <span className="item-aside muted">Dismissed</span>
+  : status === 'raised' ? <span className="item-aside muted">Raised again</span>
   : null
 
 // A set-aside item folds to its title. Opened (the chevron, or a click on the
@@ -677,7 +681,7 @@ function Pieces({ c, pieces }: { c: Ctx; pieces: Piece[] }) {
 function ConsiderCard({ c, p }: { c: Ctx; p: SectionPiece }) {
   const key = `${c.msg}:${p.id}`
   const item = c.items.get(key)
-  const status = c.live ? 'live' : item?.status ?? 'open'
+  const status = c.live ? 'live' : asOpen(item?.status)
   const title = p.title || 'Item'
   const fold = useFold(status)
   const ro = !!state.share
@@ -706,6 +710,7 @@ function ConsiderCard({ c, p }: { c: Ctx; p: SectionPiece }) {
       <div className="consider-head">
         {fold.chevron}
         <div data-block={p.block} className="md-block consider-title" onClick={fold.onTitle} dangerouslySetInnerHTML={{ __html: renderInline(title) }} />
+        {item?.again && !ro && <button className="link item-again" onClick={() => revealItem(item.again!)}>Earlier</button>}
         {status === 'open' && !ro && !p.critical && <span className="item-actions"><button className="icon-btn" title="Dismiss" onClick={() => dismissItem(c.sid, key, title)}><XIcon size={13} /></button></span>}
         {(status === 'dismissing' || status === 'completing') && <span className="item-actions"><button className="icon-btn pop-in" title="Undo" onClick={() => undismissItem(c.sid, key)}><UndoIcon size={14} /></button></span>}
         <Done status={status} />
@@ -785,7 +790,7 @@ function RunCard({ c, card, block, title, command, ready }: { c: Ctx; card: stri
 function DraftCard({ c, ask, compact, block }: { c: Ctx; ask: Ask & { draft: string }; compact?: boolean; block?: number }) {
   const askKey = `${c.msg}:${ask.id}`
   const item = c.items.get(askKey)
-  const status = c.live ? 'live' : item?.status ?? 'open'
+  const status = c.live ? 'live' : asOpen(item?.status)
   const draft = draftsOf(c.sid).find((d): d is AnswerDraft => d.kind === 'answer' && d.askKey === askKey)
   const answer = item?.reply?.kind === 'answer' ? item.reply : undefined
   const attrs = compact ? {} : { 'data-item': askKey }
@@ -865,7 +870,7 @@ export function AskCard({ c, ask, compact, block }: { c: Ctx; ask: Ask; compact?
 function QuestionCard({ c, ask, compact, block }: { c: Ctx; ask: Ask; compact?: boolean; block?: number }) {
   const askKey = `${c.msg}:${ask.id}`
   const item = c.items.get(askKey)
-  const status = c.live ? 'live' : item?.status ?? 'open'
+  const status = c.live ? 'live' : asOpen(item?.status)
   const draft = draftsOf(c.sid).find((d): d is AnswerDraft => d.kind === 'answer' && d.askKey === askKey)
   const question = useMemo(() => DOMPurify.sanitize(marked.parse(ask.question, { async: false }) as string), [ask.question])
   const answer = item?.reply?.kind === 'answer' ? item.reply : undefined

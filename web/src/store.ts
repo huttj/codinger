@@ -660,7 +660,8 @@ export function setDoneText(sid: string, key: string, text: string) {
 // order among your own, its message after yours.
 export const inboxOf = (sid: string): InboxItem[] => state.sessions.find((s) => s.id === sid)?.inbox ?? []
 
-export function queuedParts(sid: string, alsoDismiss: { key: string; label: string }[] = []): Part[] {
+// leftOpen: the items still open when you send anyway; they go as left open, not dismissed.
+export function queuedParts(sid: string, leftOpen: { key: string; label: string }[] = []): Part[] {
   const mine = draftsOf(sid)
   // Your own reply to an item wins over the lead's.
   const yours = new Set(mine.flatMap((d) => d.kind === 'note' && d.itemKey && hasContent(d) ? [d.itemKey] : d.kind === 'answer' && hasContent(d) ? [d.askKey] : d.kind === 'dismiss' || d.kind === 'done' ? [d.key] : []))
@@ -669,8 +670,8 @@ export function queuedParts(sid: string, alsoDismiss: { key: string; label: stri
   const dismissed = [
     ...mine.flatMap((d) => d.kind === 'dismiss' ? [{ key: d.key, label: d.label }] : []),
     ...lead.flatMap((i) => i.kind === 'dismiss' && i.key ? [{ key: i.key, label: i.label ?? '' }] : []),
-    ...alsoDismiss.filter((i) => !leadKeys.has(i.key)),
   ]
+  const pending = leftOpen.filter((i) => !leadKeys.has(i.key))
   const done = [
     ...mine.flatMap((d) => d.kind === 'done' ? [{ key: d.key, label: d.label, ...(d.text.trim() ? { text: d.text.trim() } : {}), ...(d.result ? { result: d.result } : {}) }] : []),
     ...lead.flatMap((i) => i.kind === 'done' && i.key ? [{ key: i.key, label: i.label ?? '', ...(i.text.trim() ? { text: i.text.trim() } : {}) }] : []),
@@ -692,14 +693,15 @@ export function queuedParts(sid: string, alsoDismiss: { key: string; label: stri
   if (files.length || comments.length) parts.push({ kind: 'review', text: '', files, comments })
   if (done.length) parts.push({ kind: 'done', text: '', items: done })
   if (dismissed.length) parts.push({ kind: 'dismiss', text: '', items: dismissed })
+  if (pending.length) parts.push({ kind: 'pending', text: '', items: pending })
   const c = composerOf(sid)
   if (c.text.trim() || c.images.length) parts.push({ kind: 'text', text: c.text, images: c.images })
   parts.push(...inboxParts(lead.filter((i) => !i.kind || i.kind === 'text')))
   return parts
 }
 
-export async function sendQueued(sid: string, alsoDismiss: { key: string; label: string }[] = []) {
-  const parts = queuedParts(sid, alsoDismiss)
+export async function sendQueued(sid: string, leftOpen: { key: string; label: string }[] = []) {
+  const parts = queuedParts(sid, leftOpen)
   if (!parts.length) return
   await api(`/api/sessions/${sid}/send`, 'POST', { parts, inbox: inboxOf(sid).map((i) => i.id) })
   state.drafts[sid] = []

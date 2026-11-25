@@ -632,7 +632,7 @@ button.done-mark:hover { background: color-mix(in srgb, var(--ok) 12%, transpare
 .reply-btn { display: inline-flex; gap: 5px; align-items: center; font-size: calc(12.5px * var(--fs, 1)); padding: 2px 9px; color: var(--muted); }
 .reply-btn:hover:not(:disabled) { color: var(--text); }
 .consider.st-answered { border-left-color: var(--ok); box-shadow: none; background: transparent; }
-.consider.st-dismissing, .consider.st-dismissed, .consider.st-skipped { border-left-color: var(--line); box-shadow: none; background: transparent; opacity: .6; }
+.consider.st-dismissing, .consider.st-dismissed, .consider.st-skipped, .consider.st-raised { border-left-color: var(--line); box-shadow: none; background: transparent; opacity: .6; }
 .consider.folded .consider-body { display: none; }
 /* A set-aside item opened again reads at full strength. */
 .consider.unfolded, .ask-card.unfolded { opacity: 1; background: color-mix(in srgb, var(--muted) 8%, transparent); }
@@ -646,7 +646,7 @@ button.done-mark:hover { background: color-mix(in srgb, var(--ok) 12%, transpare
 .icon-btn { border: none; background: none; padding: 3px; line-height: 0; color: var(--muted); border-radius: 5px; }
 .icon-btn:hover:not(:disabled) { color: var(--text); background: rgba(127, 127, 127, .15); }
 .ask-row { display: flex; gap: 8px; align-items: flex-start; } .ask-row .ask-q { flex: 1; }
-.ask-card.st-dismissing, .ask-card.st-dismissed, .ask-card.st-skipped { opacity: .6; box-shadow: none; background: transparent; border-left-color: var(--line); }
+.ask-card.st-dismissing, .ask-card.st-dismissed, .ask-card.st-skipped, .ask-card.st-raised { opacity: .6; box-shadow: none; background: transparent; border-left-color: var(--line); }
 .ask-card.st-live { box-shadow: none; }
 @keyframes flash { 0% { box-shadow: 0 0 0 3px var(--hl-focus); } 100% { box-shadow: 0 0 0 3px transparent; } }
 .flash { animation: flash 1.2s ease-out; }
@@ -756,6 +756,7 @@ button.done-mark:hover { background: color-mix(in srgb, var(--ok) 12%, transpare
 .user-part.artifact:hover .sent-quote { color: var(--text); }
 .art-where { display: flex; align-items: center; gap: 5px; min-width: 0; color: var(--muted); font-size: calc(12px * var(--fs, 1)); }
 .art-where code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.item-again { font-size: calc(12px * var(--fs, 1)); color: var(--muted); white-space: nowrap; }
 .sent-dismiss { color: var(--muted); font-size: calc(12.5px * var(--fs, 1)); display: flex; gap: 5px; align-items: baseline; }
 .sent-quote { color: var(--muted); font-size: calc(12.5px * var(--fs, 1)); white-space: pre-wrap; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; margin-bottom: 2px; }
 .user-part.note:hover .sent-quote { color: var(--text); }

@@ -11,7 +11,8 @@ import { withoutImages } from '../../../shared/images.ts'
 import { withoutPastes } from '../../../shared/pastes.ts'
 import type { Item } from '../../../shared/blocks.ts'
 
-const OPEN = new Set(['open', 'drafted', 'dismissing', 'completing'])
+// pending: left open when you sent anyway, so it is still yours to answer.
+const OPEN = new Set(['open', 'pending', 'drafted', 'dismissing', 'completing'])
 
 export function AttentionPanel({ sid }: { sid: string }) {
   const [showDone, setShowDone] = useState(() => localStorage.getItem('codinger.panel.done') === '1')

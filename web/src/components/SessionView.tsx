@@ -506,7 +506,7 @@ export function Composer({ m, attachRef }: { m: SessionMeta; attachRef?: React.R
   const [sending, setSending] = useState(false)
   const busy = m.status === 'working' || m.status === 'permission'
   // Sending while questions or items are still open warns once; sending again
-  // dismisses the rest.
+  // leaves the rest open for later (not dismissed).
   const open = useItems(m.id).filter((i) => i.status === 'open')
   // An item marked critical has to get a comment with text (or Done) before anything goes, a slash command too.
   const critical = open.filter((i) => i.kind === 'consider' && i.critical)

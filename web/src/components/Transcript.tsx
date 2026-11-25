@@ -711,11 +711,12 @@ function repliesSummary(parts: Part[]): string {
   const comments = n('note') + n('artifact') - reactions.length
   const done = parts.reduce((s, p) => s + (p.kind === 'done' ? p.items.length : 0), 0)
   const dismissed = parts.reduce((s, p) => s + (p.kind === 'dismiss' ? p.items.length : 0), 0)
+  const pending = parts.reduce((s, p) => s + (p.kind === 'pending' ? p.items.length : 0), 0)
   const verdicts = parts.reduce((s, p) => s + (p.kind === 'review' ? p.files.length : 0), 0)
   const lines = parts.reduce((s, p) => s + (p.kind === 'review' ? p.comments.length : 0), 0)
   const out: string[] = []
   const add = (k: number, one: string, many: string) => { if (k) out.push(`${k} ${k === 1 ? one : many}`) }
-  add(verdicts, 'verdict', 'verdicts'); add(comments + lines, 'comment', 'comments'); add(reactions.length, 'reaction', 'reactions'); add(n('answer'), 'answer', 'answers'); add(done, 'done', 'done'); add(dismissed, 'dismissed', 'dismissed')
+  add(verdicts, 'verdict', 'verdicts'); add(comments + lines, 'comment', 'comments'); add(reactions.length, 'reaction', 'reactions'); add(n('answer'), 'answer', 'answers'); add(done, 'done', 'done'); add(dismissed, 'dismissed', 'dismissed'); add(pending, 'left open', 'left open')
   return out.join(', ')
 }
 
@@ -767,6 +768,7 @@ function PartHead({ p, sid }: { p: Part; sid?: string }) {
     {p.kind === 'artifact' && <div className="art-where"><ArtifactIcon size={12} /> <b>{p.anchor.artifact}</b>{p.anchor.v != null && ` v${p.anchor.v}`}{(p.anchor.pid || p.anchor.path) && <code>{p.anchor.pid ?? p.anchor.path}</code>}</div>}
     {p.kind === 'artifact' && p.quote.trim() && <SentQuote quote={p.quote} words={ARTIFACT_QUOTE_WORDS} />}
     {p.kind === 'dismiss' && <div className="sent-dismiss"><XIcon size={11} /> {p.items.map((i) => i.label).join(' · ')}</div>}
+    {p.kind === 'pending' && <div className="sent-dismiss"><DashIcon size={11} /> Left open: {p.items.map((i) => i.label).join(' · ')}</div>}
     {p.kind === 'review' && <SentReview p={p} sid={sid} />}
     {p.kind === 'done' && <div className="sent-dismiss sent-done"><CheckIcon size={11} /> {p.items.map((i) => i.text ? `${i.label} (${i.text})` : i.label).join(' · ')}</div>}
     {p.kind === 'answer' && <div className="answer-q" dangerouslySetInnerHTML={{ __html: renderInline(p.question.split('\n')[0]) }} />}
@@ -798,7 +800,7 @@ function UserEdit({ sid, e, onDone }: { sid: string; e: Extract<Event, { t: 'use
   const [parts, setParts] = useState<Part[]>(() => e.parts.some((p) => p.kind === 'text') ? e.parts : [...e.parts, { kind: 'text', text: '' }])
   const [busy, setBusy] = useState(false)
   const set = (i: number, patch: { text?: string; images?: ImageRef[] }) => setParts((ps) => ps.map((p, j) => j === i ? { ...p, ...patch } as Part : p))
-  const kept = parts.filter((p) => p.kind === 'dismiss' || p.kind === 'done' || p.kind === 'review' || p.text.trim() || p.images?.length || (p.kind === 'answer' && p.choices?.length))
+  const kept = parts.filter((p) => p.kind === 'dismiss' || p.kind === 'pending' || p.kind === 'done' || p.kind === 'review' || p.text.trim() || p.images?.length || (p.kind === 'answer' && p.choices?.length))
   const submit = async () => {
     if (!kept.length || busy) return
     setBusy(true)
@@ -809,7 +811,7 @@ function UserEdit({ sid, e, onDone }: { sid: string; e: Extract<Event, { t: 'use
       {parts.map((p, i) => (
         <div key={i} className={`user-part ${p.kind}`}>
           <PartHead p={p} sid={sid} />
-          {p.kind !== 'dismiss' && p.kind !== 'done' && p.kind !== 'review' && (
+          {p.kind !== 'dismiss' && p.kind !== 'pending' && p.kind !== 'done' && p.kind !== 'review' && (
             <RichInput value={p.text} onChange={(text) => set(i, { text })} images={p.images ?? []} onImages={(images) => set(i, { images })}
               placeholder={p.kind === 'note' ? 'Comment' : p.kind === 'answer' ? 'Answer' : 'Message Claude'}
               autoFocus={i === parts.length - 1} minRows={1} onSubmit={submit} onEscape={onDone} />

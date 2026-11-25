@@ -16,23 +16,30 @@ export type ItemStatus =
   | 'dismissed'   // set aside and sent
   | 'completing'  // marked done, not sent yet
   | 'completed'   // marked done and sent
+  | 'pending'     // left open when you sent anyway: you can still reply
+  | 'raised'      // the agent raised it again in a later message
   | 'skipped'     // an earlier turn moved on without it
 
 export type TrackedItem = Item & { key: string; msg: string; status: ItemStatus; reply?: Part }
 
-export type ItemFold = { replies: Map<string, Part>; dismissed: Set<string>; done: Set<string> }
+export type ItemFold = { replies: Map<string, Part>; dismissed: Set<string>; pending: Set<string>; done: Set<string> }
 
 export function foldItems(events: Event[]): ItemFold {
-  const f: ItemFold = { replies: new Map(), dismissed: new Set(), done: new Set() }
+  const f: ItemFold = { replies: new Map(), dismissed: new Set(), pending: new Set(), done: new Set() }
   for (const e of events) {
     if (e.t !== 'user') continue
     for (const p of e.parts) {
       if (p.kind === 'answer') f.replies.set(p.askKey, p)
       else if (p.kind === 'note' && p.itemKey) f.replies.set(p.itemKey, p)
       else if (p.kind === 'dismiss') for (const i of p.items) f.dismissed.add(i.key)
+      else if (p.kind === 'pending') for (const i of p.items) f.pending.add(i.key)
       else if (p.kind === 'done') for (const i of p.items) f.done.add(i.key)
-      // A review the agent asked for (<review>): your verdicts on it are the reply.
-      else if (p.kind === 'review') for (const v of p.files) if (/:r\d+$/.test(v.group)) f.replies.set(v.group, p)
+      // A review the agent asked for (<review>): your verdicts on it are the reply. A note with no
+      // verdict leaves it open.
+      else if (p.kind === 'review') for (const v of p.files) if (/:r\d+$/.test(v.group)) {
+        if (v.verdict) f.replies.set(v.group, p)
+        else if (!p.files.some((x) => x.group === v.group && x.verdict)) f.pending.add(v.group)
+      }
     }
   }
   return f
@@ -47,7 +54,8 @@ export function draftStatus(sid: string, key: string, critical = false): ItemSta
   }
   for (const d of draftsOf(sid)) {
     // A review is drafted when you decided on it or on each of its files (review.ts).
-    if (d.kind === 'verdict' && d.group === key && reviewDone(sid, key)) return 'drafted'
+    // A note on it with no decision is a reply too: the review stays open after it.
+    if (d.kind === 'verdict' && d.group === key && (reviewDone(sid, key) || (!d.path && !!d.text?.trim()))) return 'drafted'
     if (d.kind === 'answer' && d.askKey === key && hasContent(d)) return 'drafted'
     if (d.kind === 'note' && d.itemKey === key && hasContent(d) && (!critical || (!d.reaction && /[\p{L}\p{N}]/u.test(d.text)))) return 'drafted'
   }
@@ -59,6 +67,9 @@ export function draftStatus(sid: string, key: string, critical = false): ItemSta
 export function trackItems(sid: string, events: Event[], fold: ItemFold): TrackedItem[] {
   const lastUser = events.findLastIndex(fromUser)
   const out: TrackedItem[] = []
+  // Items the agent raised again later (<raise>, shared/blocks.ts raiseItems).
+  const raised = new Set<string>()
+  for (const e of events) if (e.t === 'assistant' && !e.synthetic) for (const b of e.blocks) if (b.type === 'text' && b.text.includes('again=')) for (const it of itemsOf(b.text)) if (it.again) raised.add(it.again)
   events.forEach((e, idx) => {
     if (e.t !== 'assistant' || e.synthetic) return
     e.blocks.forEach((b, i) => {
@@ -71,7 +82,9 @@ export function trackItems(sid: string, events: Event[], fold: ItemFold): Tracke
         const status: ItemStatus = fold.done.has(key) ? 'completed'
           : reply ? 'answered'
           // A reply drafted after the dismissal went shows as one.
+          : raised.has(key) || (it.parent && raised.has(`${msg}:${it.parent}`)) ? 'raised'
           : fold.dismissed.has(key) ? draftStatus(sid, key, critical) ?? 'dismissed'
+          : fold.pending.has(key) ? draftStatus(sid, key, critical) ?? 'pending'
           : idx < lastUser ? 'skipped'
           : draftStatus(sid, key, critical) ?? 'open'
         out.push({ ...it, key, msg, status, reply })
@@ -84,8 +97,8 @@ export function trackItems(sid: string, events: Event[], fold: ItemFold): Tracke
     if (!it.parent) continue
     const up = out.find((p) => p.msg === it.msg && p.id === it.parent)
     if (!up) continue
-    if (it.status === 'answered' && (up.status === 'open' || up.status === 'dismissing' || up.status === 'dismissed')) Object.assign(up, { status: 'answered', reply: up.reply ?? it.reply })
-    else if (it.status === 'drafted' && up.status === 'open') up.status = 'drafted'
+    if (it.status === 'answered' && (up.status === 'open' || up.status === 'pending' || up.status === 'dismissing' || up.status === 'dismissed')) Object.assign(up, { status: 'answered', reply: up.reply ?? it.reply })
+    else if (it.status === 'drafted' && (up.status === 'open' || up.status === 'pending')) up.status = 'drafted'
   }
   return out
 }

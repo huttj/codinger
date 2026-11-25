@@ -10,7 +10,7 @@ import { randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import { formatAnswer, formatArtifactNote, formatNote } from '../shared/asks.ts'
-import { formatDismissed, formatDone, itemsOf } from '../shared/blocks.ts'
+import { formatDismissed, formatDone, formatPending, itemsOf, raiseItems } from '../shared/blocks.ts'
 import { fromUser } from '../shared/inbox.ts'
 import { formatReview } from '../shared/review.ts'
 import { formatMail } from '../shared/mail.ts'
@@ -522,7 +522,8 @@ export class Session {
         const blocks: Block[] = []
         for (const b of a.content ?? []) {
           // Images of local files in the text point at kept copies (server/media.ts).
-          if (b.type === 'text') blocks.push({ type: 'text', text: keepMediaIn(b.text, m.cwd) })
+          // <raise item="…"/>: an earlier item again, as it was.
+          if (b.type === 'text') blocks.push({ type: 'text', text: raiseItems(keepMediaIn(b.text, m.cwd), (msg) => this.textOf(msg)) })
           else if (b.type === 'thinking' && b.thinking) blocks.push({ type: 'thinking', text: b.thinking })
           else if (b.type === 'tool_use') blocks.push({ type: 'tool_use', id: b.id, name: b.name, input: b.input })
         }
@@ -644,6 +645,14 @@ export class Session {
     }
   }
 
+  // The text of a block of Claude's, by "<seq>.<block>" (the first part of an item's key).
+  private textOf(msg: string): string | undefined {
+    const [seq, i] = msg.split('.').map(Number)
+    const e = this.getEvents().find((x) => x.t === 'assistant' && x.seq === seq)
+    const b = e?.t === 'assistant' ? e.blocks[i] : undefined
+    return b?.type === 'text' ? b.text : undefined
+  }
+
   // Questions and items to consider in Claude's text since the user last spoke.
   private openAsks(): { pendingAsks: number; pendingCritical: number; pendingReviews: number } {
     const ev = this.getEvents()
@@ -664,7 +673,7 @@ export class Session {
     while (start > 0 && seen < turns) { start--; if (ev[start].t === 'user') seen++ }
     const lines: string[] = []
     for (const e of ev.slice(start)) {
-      if (e.t === 'user') lines.push(`USER${e.from ? ` (via ${e.from})` : ''}: ${e.parts.map((p) => p.kind === 'note' ? formatNote(p.quote, p.text) : p.kind === 'answer' ? `[answer ${p.askKey}] ${p.choices?.join('; ') ?? ''} ${p.text}` : p.kind === 'dismiss' ? formatDismissed(p.items) : p.kind === 'done' ? formatDone(p.items) : partText(p)).join('\n')}`)
+      if (e.t === 'user') lines.push(`USER${e.from ? ` (via ${e.from})` : ''}: ${e.parts.map((p) => p.kind === 'note' ? formatNote(p.quote, p.text) : p.kind === 'answer' ? `[answer ${p.askKey}] ${p.choices?.join('; ') ?? ''} ${p.text}` : p.kind === 'dismiss' ? formatDismissed(p.items) : p.kind === 'pending' ? formatPending(p.items) : p.kind === 'done' ? formatDone(p.items) : partText(p)).join('\n')}`)
       else if (e.t === 'assistant') for (const b of e.blocks) {
         if (b.type === 'text') lines.push(`CLAUDE: ${b.text}`)
         else if (b.type === 'tool_use') lines.push(`  [${b.name}] ${toolSummary(b.name, b.input)}`)
@@ -683,6 +692,7 @@ function partText(p: Part): string {
     : p.kind === 'artifact' ? formatArtifactNote(p.anchor, p.quote, p.text)
     : p.kind === 'answer' ? formatAnswer(p.askKey.split(':').pop()!, p.question, p.choices, p.text, p.draft)
     : p.kind === 'dismiss' ? formatDismissed(p.items)
+    : p.kind === 'pending' ? formatPending(p.items)
     : p.kind === 'done' ? formatDone(p.items)
     : p.kind === 'review' ? formatReview(p.files, p.comments)
     : p.kind === 'mail' ? formatMail(p)
