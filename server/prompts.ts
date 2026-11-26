@@ -162,7 +162,8 @@ one "Marked done" line, each with any problem the user hit, or the result of a c
 from a \`<run>\` block; follow up on the problems.
 
 To raise an earlier item again, do not write it again. Put \`<raise item="<key>"/>\` on its own
-line, with the key from one of these lines (for example \`295.0:c1\`). Codinger shows the
+line, with the key from one of these lines (for example \`295.0:c1\`), or with the id of your
+own earlier \`<ask>\` (for example \`test-people\`). Codinger shows the
 item there again, as it was, as a new item. Write any new context before it.
 
 Assume the user is capable but busy: their attention is split across many things, and they

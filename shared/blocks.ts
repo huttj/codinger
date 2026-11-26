@@ -234,19 +234,24 @@ export function itemSource(text: string, id: string, key: string): string | null
 }
 
 // <raise item="<msg>:<id>"/> on a line of its own (outside code fences) shows an item of an earlier
-// message again: the server puts the item's markup in its place (server/session.ts). find gives the
-// text of a message by its "<seq>.<block>"; for a key it cannot find, the line says so.
+// message again: the server puts the item's markup in its place (server/session.ts). The key can be
+// only the id too (the id of an <ask>, or c1): then the newest earlier item with that id.
+// find gives the text of a message by its "<seq>.<block>"; recent gives the messages, newest first.
+// For a key it cannot find, the line says so.
 const RAISE = /^\s*<raise\s+item\s*=\s*["']?([\w.:-]+)["']?\s*\/?>\s*(?:<\/raise>\s*)?$/
-export function raiseItems(text: string, find: (msg: string) => string | undefined): string {
+export function raiseItems(text: string, find: (msg: string) => string | undefined, recent: () => Iterable<{ msg: string; text: string }>): string {
   if (!text.includes('<raise')) return text
+  const source = (ref: string): string | null => {
+    const at = ref.indexOf(':')
+    if (at > 0) { const src = find(ref.slice(0, at)); return src == null ? null : itemSource(src, ref.slice(at + 1), ref) }
+    for (const m of recent()) if (m.text.includes(ref)) { const out = itemSource(m.text, ref, `${m.msg}:${ref}`); if (out) return out }
+    return null
+  }
   let fence = ''
   return text.split('\n').map((line) => {
     const f = /^\s*(`{3,}|~{3,})/.exec(line)?.[1]
     if (f && (!fence || (f[0] === fence[0] && f.length >= fence.length && !line.trim().slice(f.length)))) { fence = fence ? '' : f; return line }
     const m = fence ? null : RAISE.exec(line)
-    if (!m) return line
-    const at = m[1].indexOf(':')
-    const src = at > 0 ? find(m[1].slice(0, at)) : undefined
-    return (src != null && itemSource(src, m[1].slice(at + 1), m[1])) || `*(Codinger found no item \`${m[1]}\` to raise again.)*`
+    return !m ? line : source(m[1]) ?? `*(Codinger found no item \`${m[1]}\` to raise again.)*`
   }).join('\n')
 }

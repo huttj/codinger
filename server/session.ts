@@ -523,7 +523,7 @@ export class Session {
         for (const b of a.content ?? []) {
           // Images of local files in the text point at kept copies (server/media.ts).
           // <raise item="…"/>: an earlier item again, as it was.
-          if (b.type === 'text') blocks.push({ type: 'text', text: raiseItems(keepMediaIn(b.text, m.cwd), (msg) => this.textOf(msg)) })
+          if (b.type === 'text') blocks.push({ type: 'text', text: raiseItems(keepMediaIn(b.text, m.cwd), (msg) => this.textOf(msg), () => this.recentTexts()) })
           else if (b.type === 'thinking' && b.thinking) blocks.push({ type: 'thinking', text: b.thinking })
           else if (b.type === 'tool_use') blocks.push({ type: 'tool_use', id: b.id, name: b.name, input: b.input })
         }
@@ -651,6 +651,16 @@ export class Session {
     const e = this.getEvents().find((x) => x.t === 'assistant' && x.seq === seq)
     const b = e?.t === 'assistant' ? e.blocks[i] : undefined
     return b?.type === 'text' ? b.text : undefined
+  }
+
+  // Claude's text blocks, newest first, each with its "<seq>.<block>".
+  private *recentTexts(): Generator<{ msg: string; text: string }> {
+    const ev = this.getEvents()
+    for (let j = ev.length - 1; j >= 0; j--) {
+      const e = ev[j]
+      if (e.t !== 'assistant' || e.synthetic) continue
+      for (let i = e.blocks.length - 1; i >= 0; i--) { const b = e.blocks[i]; if (b.type === 'text') yield { msg: `${e.seq}.${i}`, text: b.text } }
+    }
   }
 
   // Questions and items to consider in Claude's text since the user last spoke.
