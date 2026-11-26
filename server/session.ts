@@ -523,7 +523,7 @@ export class Session {
         for (const b of a.content ?? []) {
           // Images of local files in the text point at kept copies (server/media.ts).
           // <raise item="…"/>: an earlier item again, as it was.
-          if (b.type === 'text') blocks.push({ type: 'text', text: raiseItems(keepMediaIn(b.text, m.cwd), (msg) => this.textOf(msg), () => this.recentTexts()) })
+          if (b.type === 'text') blocks.push({ type: 'text', text: raiseItems(keepMediaIn(b.text, m.cwd), (msg) => this.textOf(msg), () => this.recentTexts(), (ref) => this.raiseMisses.push(ref)) })
           else if (b.type === 'thinking' && b.thinking) blocks.push({ type: 'thinking', text: b.thinking })
           else if (b.type === 'tool_use') blocks.push({ type: 'tool_use', id: b.id, name: b.name, input: b.input })
         }
@@ -651,6 +651,28 @@ export class Session {
     const e = this.getEvents().find((x) => x.t === 'assistant' && x.seq === seq)
     const b = e?.t === 'assistant' ? e.blocks[i] : undefined
     return b?.type === 'text' ? b.text : undefined
+  }
+
+  // <raise> keys in this turn that found no item: the agent hears of them when the turn ends.
+  raiseMisses: string[] = []
+  // The last turn came from such a note: its misses get no second note.
+  raiseNoted = false
+
+  // The note to Claude about raiseMisses, with the keys of recent items; null when there is none
+  // to send. Clears the misses.
+  raiseNote(): string | null {
+    const miss = [...new Set(this.raiseMisses)]
+    this.raiseMisses = []
+    const again = this.raiseNoted
+    this.raiseNoted = false
+    if (!miss.length || again) return null
+    this.raiseNoted = true
+    const keys: string[] = []
+    for (const m of this.recentTexts()) {
+      for (const it of itemsOf(m.text)) keys.push(`\`${m.msg}:${it.id}\` (${it.label.slice(0, 80)})`)
+      if (keys.length >= 15) break
+    }
+    return `[Codinger] In a recent message of yours, ${miss.map((k) => `\`<raise item="${k}"/>\``).join(', ')} found no item. The user sees "Codinger found no item" there. Raise the item again with a correct key, or write it again. The items of your recent messages, newest first:\n${keys.slice(0, 15).map((k) => `- ${k}`).join('\n') || '- (none)'}`
   }
 
   // Claude's text blocks, newest first, each with its "<seq>.<block>".

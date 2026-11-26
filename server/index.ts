@@ -226,7 +226,7 @@ const hooks: Hooks = {
     metaChanged()
     if (event.t === 'assistant') stepped(s, event.blocks.flatMap((b) => b.type === 'tool_use' ? [b.name] : []))
     if (event.t === 'assistant') for (const b of event.blocks) if (b.type === 'tool_use') toolStarted(s.meta.cwd, b.id, b.name, event.ts)
-    if (event.t === 'result') setImmediate(() => { autoSend(s); flushMail(s); taskTurn(s); autopilotTurn(s, event.isError); turnEnded(s) })
+    if (event.t === 'result') setImmediate(() => { autoSend(s); flushMail(s); taskTurn(s); autopilotTurn(s, event.isError); raiseTurn(s); turnEnded(s) })
     // A tool call that finished may have changed a tracked file: record it with this message.
     if (event.t === 'tool_result') {
       const ev = s.getEvents()
@@ -487,6 +487,15 @@ function taskEnded(t: Task) {
   if (busy(s) && t.notify === 'interrupt') s.interrupt()
   else if (busy(s)) return // taskTurn sends it when the turn ends
   sendTasks(s)
+}
+
+// A turn ended: a <raise> in it that found no item goes back to the agent, once, to fix
+// (Session.raiseNote). When another message started a turn already, the note waits for its end.
+function raiseTurn(s: Session) {
+  if (busy(s)) return
+  if (holdReasons(s, true).length) { s.raiseMisses = []; return }
+  const text = s.raiseNote()
+  if (text) s.send([{ kind: 'text', text }], { from: 'codinger', ...hiddenFor(s, []) })
 }
 
 // A turn ended: tasks that asked for a turn of their own get it.

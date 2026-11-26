@@ -237,9 +237,9 @@ export function itemSource(text: string, id: string, key: string): string | null
 // message again: the server puts the item's markup in its place (server/session.ts). The key can be
 // only the id too (the id of an <ask>, or c1): then the newest earlier item with that id.
 // find gives the text of a message by its "<seq>.<block>"; recent gives the messages, newest first.
-// For a key it cannot find, the line says so.
+// For a key it cannot find, the line says so, and missed gets the key (the server tells the agent).
 const RAISE = /^\s*<raise\s+item\s*=\s*["']?([\w.:-]+)["']?\s*\/?>\s*(?:<\/raise>\s*)?$/
-export function raiseItems(text: string, find: (msg: string) => string | undefined, recent: () => Iterable<{ msg: string; text: string }>): string {
+export function raiseItems(text: string, find: (msg: string) => string | undefined, recent: () => Iterable<{ msg: string; text: string }>, missed?: (ref: string) => void): string {
   if (!text.includes('<raise')) return text
   const source = (ref: string): string | null => {
     const at = ref.indexOf(':')
@@ -252,6 +252,10 @@ export function raiseItems(text: string, find: (msg: string) => string | undefin
     const f = /^\s*(`{3,}|~{3,})/.exec(line)?.[1]
     if (f && (!fence || (f[0] === fence[0] && f.length >= fence.length && !line.trim().slice(f.length)))) { fence = fence ? '' : f; return line }
     const m = fence ? null : RAISE.exec(line)
-    return !m ? line : source(m[1]) ?? `*(Codinger found no item \`${m[1]}\` to raise again.)*`
+    if (!m) return line
+    const src = source(m[1])
+    if (src) return src
+    missed?.(m[1])
+    return `*(Codinger found no item \`${m[1]}\` to raise again, and told the agent.)*`
   }).join('\n')
 }
