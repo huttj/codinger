@@ -8,7 +8,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ImageRef } from '../../../shared/types.ts'
 import { htmlToMarkdown } from '../htmlmd.ts'
-import { activate, deleteKey, enterKey, fromDom, gapKey, imageCaret, imgNode, nodeOffset, pasteText, pillText, rangeAt, rangeOffset, render, select, selectionOffsets, snapCaret, uploadNode, wrapKey } from '../mdlive.ts'
+import { activate, arrowKey, deleteKey, enterKey, fromDom, gapKey, imageCaret, imgNode, nodeOffset, pasteText, pillText, rangeAt, rangeOffset, render, select, selectionOffsets, snapCaret, uploadNode, wrapKey } from '../mdlive.ts'
 import { imagesFrom, uploadImage } from '../util.ts'
 import { media, uploadFile } from '../store.ts'
 import { fileToken } from '../../../shared/files.ts'
@@ -315,6 +315,14 @@ export function RichInput({ value, onChange, images, onImages, placeholder, auto
       reveal(el, d.start === d.value.length)
       record(d.value, [d.start, d.start])
       emit(d.value)
+      return true
+    }
+    if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+      const p = arrowKey(el, fromDom(el), sel[0], sel[1], e.key === 'ArrowLeft')
+      if (p == null) return false
+      select(el, p)
+      activate(el)
+      reveal(el, p === fromDom(el).length)
       return true
     }
     const r = plainEnter ? enterKey(fromDom(el), sel[0], sel[1]) : wrapKey(e, fromDom(el), sel[0], sel[1])

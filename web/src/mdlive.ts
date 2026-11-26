@@ -401,11 +401,12 @@ export function activate(el: HTMLElement) {
     for (const n of [r.startContainer, r.endContainer]) {
       for (let p: Node | null = n; p && p !== el; p = p.parentNode) if (p instanceof Element && p.classList.contains('md-x')) on.add(p)
     }
-    // A caret just before or after a span counts as in it.
+    // A caret just before or after a span counts as in it, and in the spans that end or start with it
+    // (**b** at the end of a list item).
     if (r.collapsed && r.startContainer.nodeType === Node.TEXT_NODE) {
       const t = r.startContainer
-      if (r.startOffset === 0 && t.previousSibling instanceof Element && t.previousSibling.classList.contains('md-x')) on.add(t.previousSibling)
-      if (r.startOffset === t.textContent?.length && t.nextSibling instanceof Element && t.nextSibling.classList.contains('md-x')) on.add(t.nextSibling)
+      if (r.startOffset === 0) for (let p = t.previousSibling; p instanceof Element; p = p.lastChild) if (p.classList.contains('md-x')) on.add(p)
+      if (r.startOffset === t.textContent?.length) for (let p = t.nextSibling; p instanceof Element; p = p.firstChild) if (p.classList.contains('md-x')) on.add(p)
     }
   }
   for (const x of el.querySelectorAll('.md-x')) x.classList.toggle('md-active', on.has(x))
@@ -448,18 +449,36 @@ export function wrapKey(e: { key: string; metaKey: boolean; ctrlKey: boolean; al
 // its "](url)" too). An image or a pill next to the caret is left to the browser, which
 // removes the whole node; so is a field with an image that is still uploading.
 const graphemes = new Intl.Segmenter()
+// The length of the character (grapheme) before or after offset s; 0 at the edge.
+function charAt(value: string, s: number, back: boolean): number {
+  const segs = [...graphemes.segment(back ? value.slice(Math.max(0, s - 32), s) : value.slice(s, s + 32))]
+  return (back ? segs.at(-1) : segs[0])?.segment.length ?? 0
+}
+// The text ranges of the images and pills.
+const atomRanges = (el: HTMLElement) => [...el.querySelectorAll<HTMLElement>('img, .ri-file')].filter(isAtom).map((a) => {
+  const start = nodeOffset(el, a)
+  return [start, start + textOf(a, false).length] as const
+})
 export function deleteKey(el: HTMLElement, value: string, s: number, t: number, back: boolean): { value: string; start: number; end: number } | null {
   if (s !== t || el.querySelector('img.loading')) return null
-  const segs = [...graphemes.segment(back ? value.slice(Math.max(0, s - 32), s) : value.slice(s, s + 32))]
-  const g = back ? segs.at(-1) : segs[0]
-  if (!g) return null
-  const from = back ? s - g.segment.length : s, to = from + g.segment.length
-  for (const a of el.querySelectorAll('img, .ri-file')) {
-    if (!isAtom(a)) continue
-    const start = nodeOffset(el, a), end = start + textOf(a, false).length
-    if (from < end && to > start) return null
-  }
+  const n = charAt(value, s, back)
+  if (!n) return null
+  const from = back ? s - n : s, to = from + n
+  if (atomRanges(el).some(([a, b]) => from < b && to > a)) return null
   return { value: value.slice(0, from) + value.slice(to), start: from, end: from }
+}
+
+// The left and right arrows with a caret, done here on the text: one character at a
+// time, hidden markers too. The browser steps over hidden markers, so it could not stop
+// after a link's ")" or before its "[". The caret steps over an image or a pill as a whole.
+// Returns the new offset of the caret.
+export function arrowKey(el: HTMLElement, value: string, s: number, t: number, back: boolean): number | null {
+  if (s !== t || el.querySelector('img.loading')) return null
+  const n = charAt(value, s, back)
+  if (!n) return null
+  const p = back ? s - n : s + n
+  const atom = atomRanges(el).find(([a, b]) => a < p && p < b)
+  return atom ? (back ? atom[0] : atom[1]) : p
 }
 
 // Enter, done here so the browser adds no extra line: in a list item it starts
