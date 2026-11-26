@@ -443,6 +443,25 @@ export function wrapKey(e: { key: string; metaKey: boolean; ctrlKey: boolean; al
   return { value: v, start: s + a.length, end: t + a.length }
 }
 
+// Backspace and Delete with a caret, done here on the text: the browser deletes the
+// hidden markers next to a character with it (Backspace on a space after a link took
+// its "](url)" too). An image or a pill next to the caret is left to the browser, which
+// removes the whole node; so is a field with an image that is still uploading.
+const graphemes = new Intl.Segmenter()
+export function deleteKey(el: HTMLElement, value: string, s: number, t: number, back: boolean): { value: string; start: number; end: number } | null {
+  if (s !== t || el.querySelector('img.loading')) return null
+  const segs = [...graphemes.segment(back ? value.slice(Math.max(0, s - 32), s) : value.slice(s, s + 32))]
+  const g = back ? segs.at(-1) : segs[0]
+  if (!g) return null
+  const from = back ? s - g.segment.length : s, to = from + g.segment.length
+  for (const a of el.querySelectorAll('img, .ri-file')) {
+    if (!isAtom(a)) continue
+    const start = nodeOffset(el, a), end = start + textOf(a, false).length
+    if (from < end && to > start) return null
+  }
+  return { value: value.slice(0, from) + value.slice(to), start: from, end: from }
+}
+
 // Enter, done here so the browser adds no extra line: in a list item it starts
 // the next item (numbered ones count up); on an empty item it ends the list.
 export function enterKey(value: string, s: number, t: number): { value: string; start: number; end: number } {

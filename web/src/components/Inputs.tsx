@@ -8,7 +8,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ImageRef } from '../../../shared/types.ts'
 import { htmlToMarkdown } from '../htmlmd.ts'
-import { activate, enterKey, fromDom, gapKey, imageCaret, imgNode, nodeOffset, pasteText, pillText, rangeAt, rangeOffset, render, select, selectionOffsets, snapCaret, uploadNode, wrapKey } from '../mdlive.ts'
+import { activate, deleteKey, enterKey, fromDom, gapKey, imageCaret, imgNode, nodeOffset, pasteText, pillText, rangeAt, rangeOffset, render, select, selectionOffsets, snapCaret, uploadNode, wrapKey } from '../mdlive.ts'
 import { imagesFrom, uploadImage } from '../util.ts'
 import { media, uploadFile } from '../store.ts'
 import { fileToken } from '../../../shared/files.ts'
@@ -305,6 +305,18 @@ export function RichInput({ value, onChange, images, onImages, placeholder, auto
     const sel = selectionOffsets(el)
     if (!sel || composing.current) return false
     const plainEnter = e.key === 'Enter' && !e.metaKey && !e.ctrlKey && !e.altKey
+    if ((e.key === 'Backspace' || e.key === 'Delete') && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      const d = deleteKey(el, fromDom(el), sel[0], sel[1], e.key === 'Backspace')
+      if (!d) return false
+      // Like typing: deletes within a moment of each other are one step to undo.
+      draw(el, d.value)
+      select(el, d.start)
+      activate(el)
+      reveal(el, d.start === d.value.length)
+      record(d.value, [d.start, d.start])
+      emit(d.value)
+      return true
+    }
     const r = plainEnter ? enterKey(fromDom(el), sel[0], sel[1]) : wrapKey(e, fromDom(el), sel[0], sel[1])
     if (!r) return false
     edit(r.value, r.start, r.end)
