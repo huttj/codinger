@@ -191,7 +191,7 @@ The page reads its data by slot name: \`const rows = await prolifica.data('rows'
 - Make the page work at any width and in light and dark (prefers-color-scheme). Size charts from their container, and draw them again on resize.
 - Put \`data-pid="a-stable-name"\` on each chart, card and control.
 - After you make or change an artifact, call show_artifact with its name. It shows the page to the user and returns the script errors of the load. Fix them until it loads clean.
-- To show an artifact in a message too, write \`![caption](artifact:<name>@<n>)\` on a line of its own, with the version n that show_artifact returned. Do not put its index.html in a message as a markdown image: that copy has no data and no \`prolifica\`.
+- To show an artifact in a message too, write \`![caption](artifact:<name>@<n>)\` on a line of its own, with the version n that show_artifact returned. The message shows a card with the caption: a click opens that version in the preview pane, and a button opens it in a new window. Put the card where the artifact comes up in your message. Do not put its index.html in a message as a markdown image: that copy has no data and no \`prolifica\`.
 - To change an artifact, edit it in place, even one another session made: Codinger records which session changed what.
 - show_artifact also takes \`url\`, to show a page that a dev server on this machine serves.
 `

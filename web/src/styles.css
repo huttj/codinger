@@ -1698,3 +1698,14 @@ html { touch-action: manipulation; -webkit-text-size-adjust: 100%; text-size-adj
   .pal-close { display: flex; }
   .pal-row { min-height: 46px; }
 }
+/* An artifact in a message (Artifacts.tsx, ArtifactCard): a card that opens it in the pane or a new window. */
+.artifact-card { display: flex; align-items: center; gap: 4px; max-width: 520px; margin: 6px 0; padding: 4px 8px 4px 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); }
+.artifact-card-main { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; border: none; background: none; padding: 6px 8px; border-radius: 6px; text-align: left; color: var(--text); }
+.artifact-card-main:not(:disabled):hover { background: rgba(127, 127, 127, .08); }
+.artifact-card-main:disabled { cursor: default; }
+.artifact-card-icon { color: var(--accent); line-height: 0; }
+.artifact-card-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.artifact-card-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.artifact-card-sub { font-size: calc(12px * var(--fs, 1)); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.artifact-card-act { font-size: calc(12.5px * var(--fs, 1)); color: var(--accent); white-space: nowrap; }
+.artifact-card.missing .artifact-card-icon { color: var(--muted); }

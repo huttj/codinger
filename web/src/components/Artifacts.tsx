@@ -55,6 +55,33 @@ export function ArtifactFrame({ target, at = 0, hidden, inline, frameRef }: { ta
   return <iframe ref={frameRef} className={hidden ? 'artifact-check' : inline ? 'media-frame' : 'artifact-frame'} aria-label={a?.title ?? 'Preview'} sandbox={SANDBOX} src={src} aria-hidden={hidden} tabIndex={hidden ? -1 : undefined} />
 }
 
+// ![caption](artifact:<name>@<n>) in a message: a card, not the page itself (a page in a
+// message was too narrow to use). A click opens that version in the preview pane; its other
+// button opens it in a new window.
+export function ArtifactCard({ sid, name, v, caption }: { sid: string; name: string; v?: number; caption: string }) {
+  const st = useStore()
+  const a = st.artifacts.find((x) => x.name === name)
+  const tab = a && srcOf({ artifact: name, v }, a, st.artifactsPort, 0)
+  const title = caption.trim() || a?.title || name
+  // A published transcript has no preview pane.
+  const pane = !st.share && !!a
+  return (
+    <div className={`artifact-card${a ? '' : ' missing'}`}>
+      <button className="artifact-card-main" disabled={!pane} onClick={() => showArtifactIn(sid, name, v)}>
+        <span className="artifact-card-icon"><ArtifactIcon size={16} /></span>
+        <span className="artifact-card-text">
+          <span className="artifact-card-title">{title}</span>
+          <span className="artifact-card-sub">
+            {!a ? `There is no artifact “${name}” now.` : <>{caption.trim() && a.title !== title ? `${a.title} · ` : ''}{v != null ? `version ${v}${v === a.latest ? ' (latest)' : ''}` : 'latest version'}</>}
+          </span>
+        </span>
+        {pane && <span className="artifact-card-act">Open in the pane</span>}
+      </button>
+      {tab && <a className="icon-btn" data-tip="Open in a new window" aria-label="Open in a new window" href={tab} target="_blank" rel="noreferrer"><OpenIcon size={14} /></a>}
+    </div>
+  )
+}
+
 // When an agent shows an artifact, a hidden copy loads it once, so show_artifact can
 // report its script errors even when no pane shows it.
 export function ArtifactCheck() {
